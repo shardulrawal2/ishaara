@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as functional
+from numpy.core.multiarray import scalar
 from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
 
@@ -31,6 +32,24 @@ sys.path.insert(0, str(INCLUDE_ROOT))
 from configs import TransformerConfig  # noqa: E402
 from dataset import KeypointsDataset  # noqa: E402
 from models import Transformer  # noqa: E402
+
+
+def load_base_checkpoint_state(checkpoint_path: Path) -> dict[str, torch.Tensor]:
+    """Safely load the trusted INCLUDE tensor state under PyTorch 2.6+."""
+
+    torch.serialization.add_safe_globals(
+        [
+            (scalar, "numpy.core.multiarray.scalar"),
+            (np.dtype, "numpy.dtype"),
+            (np.dtypes.Float64DType, "numpy.dtypes.Float64DType"),
+        ]
+    )
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location="cpu",
+        weights_only=True,
+    )
+    return checkpoint["model"]
 
 
 def evaluate(model: Transformer, loader: DataLoader, device: torch.device) -> tuple[float, float]:
@@ -74,8 +93,8 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = Transformer(TransformerConfig(size="small"), n_classes=len(label_map)).to(device)
     base_checkpoint = INCLUDE_ROOT / "checkpoints" / "include_no_cnn_transformer_small.pth"
-    checkpoint = torch.load(base_checkpoint, map_location=device)
-    base_state = {name: value for name, value in checkpoint["model"].items() if not name.startswith("l2.")}
+    checkpoint_state = load_base_checkpoint_state(base_checkpoint)
+    base_state = {name: value for name, value in checkpoint_state.items() if not name.startswith("l2.")}
     missing, unexpected = model.load_state_dict(base_state, strict=False)
     if unexpected or set(missing) != {"l2.weight", "l2.bias"}:
         raise RuntimeError("The base checkpoint does not match the expected transformer architecture.")
