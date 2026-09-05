@@ -32,13 +32,28 @@ Open `http://127.0.0.1:4173/` and refresh the page with `Ctrl + F5`.
 
 ## Perform the demo
 
-1. Press **Start camera** and allow camera access.
+1. Press **Get Started**, then press **Start camera** and allow camera access.
 2. Position one signer with both hands and the upper body visible.
-3. Press **Record and recognize**.
+3. Press **Recognize one sign**.
 4. Wait through the visible 3–2–1 countdown.
 5. Perform one complete `hello` or `thankyou` sign while the button says **Recording now**.
 6. Wait for landmark extraction and inference.
 7. Read the accepted label and confidence, or explain that the confidence gate rejected an uncertain sample.
+
+The bottom navigation also demonstrates the Figma product structure: two-way conversation, model-backed vocabulary, emergency speech phrases, and camera/model settings. These application features do not expand the two-word recognition claim.
+
+## Phone-camera backup
+
+On a trusted Wi-Fi network, restart the server with LAN binding:
+
+```powershell
+$env:ISHAARA_HOST="0.0.0.0"
+.\INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
+```
+
+Run `ipconfig`, find the laptop's IPv4 address, and open `http://<laptop-ip>:4173/` on the phone. Use **Use phone camera** to record or choose a short clip. This native capture input is the reliable HTTP development fallback; live browser preview from a different device normally requires HTTPS.
+
+Do not use LAN mode on an untrusted network and do not forward port 4173 to the public internet.
 
 For the most reliable result, use the same framing and sign execution used during data collection. Do not demonstrate untrained words or random gestures as if the two-class model could identify them.
 
@@ -54,4 +69,4 @@ The ESP32 endpoint remains in the repository but is outside this MVP demonstrati
 - Model unavailable: confirm `artifacts\hello-thankyou-v1\ishaara_isl_refinement.pth` exists.
 - No hands detected: improve lighting, move closer, and keep the hands in the frame for the complete sign.
 - Incorrect result: return to neutral, wait one second, repeat the sign once during the recording window.
-- Stale interface: press `Ctrl + F5` after restarting the server.
+- Stale interface: the server disables development caching; if necessary, press `Ctrl + F5` after restarting it.

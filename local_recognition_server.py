@@ -6,9 +6,10 @@ file just long enough to extract landmarks and run the ONNX model, then deleted.
 
 from __future__ import annotations
 
-import tempfile
 import json
+import os
 import re
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from time import monotonic
@@ -36,6 +37,14 @@ sequences: dict[str, SnapshotSequence] = {}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+@app.after_request
+def disable_development_cache(response):
+    """Keep rapidly-changing local app assets and model metadata fresh."""
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def classify_clip(clip, recognizer=recognize) -> tuple[list[tuple[str, float]], Path | None]:
@@ -108,6 +117,13 @@ def active_model_status():
         minimum_confidence=REFINED_MINIMUM_CONFIDENCE,
         metrics=refined_model_metrics(),
     )
+
+
+@app.get("/api/health")
+def health_check():
+    """Small readiness response for the web app and review diagnostics."""
+
+    return jsonify(status="ready", model_labels=len(refined_labels()), esp32_endpoint="/api/frames")
 
 
 @app.post("/api/recognize")
@@ -255,4 +271,6 @@ def file_too_large(_error):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=4173, debug=False)
+    host = os.environ.get("ISHAARA_HOST", "127.0.0.1")
+    port = int(os.environ.get("ISHAARA_PORT", "4173"))
+    app.run(host=host, port=port, debug=False)

@@ -57,7 +57,7 @@ The wearable stays deliberately lightweight: it captures and streams video while
 
 ## MVP scope
 
-The first prototype intentionally targets a **small, well-tested vocabulary**, not unrestricted conversational sign language.
+The product roadmap targets the capabilities below. The checked-in working model currently recognizes only `hello` and `thankyou`; it is not unrestricted conversational sign language.
 
 - **Sign → text → speech:** recognizes a scoped set of approximately 50–200 trained signs
 - **Fingerspelling mode:** supports words outside the trained vocabulary, letter by letter
@@ -103,13 +103,13 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 | Stage | Goal | Status |
 |---|---|---|
 | 1 | ESP32-CAM video stream to phone | Planned |
-| 2 | Landmark extraction and scoped sign classifier | Planned |
-| 3 | Text-to-speech and emergency phrases | Planned |
-| 4 | Companion app and custom gesture flow | Planned |
+| 2 | Landmark extraction and scoped sign classifier | Working for 2 validated labels |
+| 3 | Text-to-speech and emergency phrases | Working in the web app |
+| 4 | Companion app and custom gesture flow | Working camera-first web MVP |
 | 5 | Speech-to-caption return path | Roadmap |
 | 6 | Continuous signing and group conversations | Research roadmap |
 
-> **Current working demo:** the laptop/mobile-camera MVP is intentionally limited to the team-trained `hello` and `thankyou` model. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope, measured held-out results, and exact demonstration procedure.
+> **Current working app:** the Figma-aligned camera MVP is intentionally limited to the team-trained `hello` and `thankyou` model. It includes sign-to-text, speech output, two-way conversation, model-backed vocabulary, emergency phrases, settings, and controlled training capture. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope and [`docs/ADDING_WORDS.md`](docs/ADDING_WORDS.md) for the exact expansion process.
 
 ### Current ML refinement path
 
@@ -128,12 +128,21 @@ Start the local review server, then open `http://127.0.0.1:4173/` in a browser:
 INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
 ```
 
-For the **mobile-video backup**, press **Start camera**, allow access to the laptop webcam, then press **Record and recognize** and perform one sign in the 2.5-second recording window. The clip is processed locally and then deleted. This route uses `POST /api/mobile/recognize`.
+For the **live-camera path**, press **Start camera**, allow access to the laptop webcam, then press **Recognize one sign** and perform one sign in the 2.5-second recording window. The clip is processed locally and then deleted. This route uses `POST /api/mobile/recognize`.
+
+For a **phone on the same trusted Wi-Fi network**, bind the server to the LAN and open the laptop's IPv4 address on the phone. The app's **Use phone camera** button uses the native video-capture picker, so it remains available even when browser live-camera access requires HTTPS:
+
+```powershell
+$env:ISHAARA_HOST="0.0.0.0"
+.\INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
+```
+
+Do not expose this development server to the public internet.
 
 For the **ESP32-CAM path**, send ordered JPEG snapshots to `POST /api/frames`, using the same `sequence_id` on each request and `final=true` on the final snapshot. This endpoint remains available while camera firmware work continues.
 
 > [!WARNING]
-> The shipped 263-label checkpoint is a baseline validated against selected source clips, **not** an accurate recognizer for arbitrary laptop-webcam or ESP32 captures. Do not use its guesses as an Ishaara accuracy claim. It may return the wrong label even when it appears confident.
+> The active two-label refinement checkpoint is a scoped MVP, **not** an accurate recognizer for arbitrary ISL vocabulary. Do not demonstrate unsupported words as if the model knows them.
 
 ### Build the first accurate scoped ISL model
 
@@ -154,7 +163,7 @@ For the **ESP32-CAM path**, send ordered JPEG snapshots to `POST /api/frames`, u
 
 6. Promote the refined model only after reviewing its per-signer errors and testing it in the same camera setup intended for the product.
 
-The recordings, prepared dataset, and training artifacts are deliberately ignored by Git. They are local, consented training data rather than public project files.
+Raw recordings and prepared datasets are deliberately ignored by Git. They are local, consented training data rather than public project files. The compact approved two-word checkpoint and its aggregate metrics are checked in so the working MVP is reproducible.
 
 ## 24-hour prototype plan
 

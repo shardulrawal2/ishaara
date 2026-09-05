@@ -1,393 +1,379 @@
-const cameraButton = document.querySelector("#camera-button");
-const packageButton = document.querySelector("#package-button");
-const video = document.querySelector("#camera");
-const placeholder = document.querySelector("#camera-placeholder");
-const cameraState = document.querySelector("#camera-state");
-const cameraOverlay = document.querySelector("#camera-overlay");
-const cameraNote = document.querySelector("#camera-note");
-const translationText = document.querySelector("#translation-text");
-const translationDetail = document.querySelector("#translation-detail");
-const flowSteps = [...document.querySelectorAll(".flow-step")];
-const clipInput = document.querySelector("#clip-input");
-const analyzeButton = document.querySelector("#analyze-button");
-const clipNote = document.querySelector("#clip-note");
-const photosInput = document.querySelector("#photos-input");
-const analyzePhotosButton = document.querySelector("#analyze-photos-button");
-const photosNote = document.querySelector("#photos-note");
-const captureSequenceButton = document.querySelector("#capture-sequence-button");
-const mobileRecognizeButton = document.querySelector("#mobile-recognize-button");
-const mobileNote = document.querySelector("#mobile-note");
-const trainingLabel = document.querySelector("#training-label");
-const trainingSigner = document.querySelector("#training-signer");
-const saveTrainingButton = document.querySelector("#save-training-button");
-const trainingNote = document.querySelector("#training-note");
-const vocabularyButton = document.querySelector("#vocabulary-button");
-const vocabularyContent = document.querySelector("#vocabulary-content");
-const vocabularySearch = document.querySelector("#vocabulary-search");
-const vocabularyList = document.querySelector("#vocabulary-list");
-const vocabularyNote = document.querySelector("#vocabulary-note");
-const modelChipTitle = document.querySelector("#model-chip-title");
-const modelChipDetail = document.querySelector("#model-chip-detail");
+const $ = (selector, scope = document) => scope.querySelector(selector);
+const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
+const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-let cameraStream;
-let vocabulary = [];
+const onboarding = $("#onboarding");
+const cameraPanel = $("#camera-panel");
+const cameraPreview = $("#camera-preview");
+const cameraStatus = $("#camera-status");
+const cameraToggle = $("#camera-toggle");
+const cameraSelect = $("#camera-select");
+const countdown = $("#countdown");
+const recognizeButton = $("#recognize-now");
+const mobileCaptureButton = $("#mobile-capture-button");
+const mobileCaptureInput = $("#mobile-capture-input");
+const actionNote = $("#action-note");
+const recognizedWord = $("#recognized-word");
+const recognizedDetail = $("#recognized-detail");
+const confidenceBadge = $("#confidence-badge");
+const confidenceFill = $("#confidence-fill");
+const speakResultButton = $("#speak-result");
+const conversationSign = $("#conversation-sign");
+const conversationLog = $("#conversation-log");
+const modelPill = $("#model-pill");
+const modelPillText = $("#model-pill-text");
+const settingsModelDetail = $("#settings-model-detail");
+const wordList = $("#word-list");
+const vocabularyCount = $("#vocabulary-count");
+const vocabularySearch = $("#vocabulary-search");
+const voiceSelect = $("#voice-select");
+const trainingDialog = $("#training-dialog");
+const trainingLabel = $("#training-label");
+const trainingSigner = $("#training-signer");
+const trainingButton = $("#record-training");
+const trainingStatus = $("#training-status");
+const toast = $("#toast");
 
-function showRecognitionResult(payload, note) {
-  if (payload.status === "no_confident_match") {
-    translationText.textContent = "No confident match";
-    translationDetail.textContent = `Closest tentative match: ${payload.closest_label} (${(payload.confidence * 100).toFixed(1)}%).`;
-    if (note) note.textContent = "No translation was shown because the model was not confident enough.";
-    return false;
-  }
-  const [topCandidate, ...otherCandidates] = payload.candidates;
-  translationText.textContent = topCandidate.label;
-  translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
-  return true;
+let cameraStream = null;
+let currentResult = "";
+let modelLabels = [];
+let toastTimer = null;
+
+function formatLabel(label) {
+  if (label === "thankyou") return "Thank you";
+  return label.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function setActiveStep(index) {
-  flowSteps.forEach((step, currentIndex) => step.classList.toggle("active", currentIndex <= index));
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2600);
 }
 
-cameraButton.addEventListener("click", async () => {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach((track) => track.stop());
-    cameraStream = undefined;
-    video.srcObject = null;
-    video.hidden = true;
-    placeholder.hidden = false;
-    cameraOverlay.hidden = true;
-    cameraState.textContent = "Camera off";
-    cameraState.classList.remove("on");
-    cameraButton.textContent = "Start camera";
-    cameraNote.textContent = "Your video stays in this browser preview.";
-    translationText.textContent = "Ready for hello or thank you";
-    translationDetail.textContent = "Start the camera and record one clear sign. Uncertain results are rejected.";
-    setActiveStep(0);
+function setRoute(route) {
+  $$(".app-view").forEach((view) => view.classList.toggle("is-active", view.dataset.view === route));
+  $$(".bottom-nav button").forEach((button) => button.classList.toggle("is-active", button.dataset.route === route));
+  $(".app-main").scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function dismissOnboarding() {
+  onboarding.classList.add("is-hidden");
+  window.localStorage.setItem("ishaara-onboarded", "true");
+}
+
+function updateRecognitionState(title, detail, confidence = 0, accepted = false) {
+  recognizedWord.textContent = title;
+  recognizedDetail.textContent = detail;
+  confidenceBadge.textContent = accepted ? `${Math.round(confidence * 100)}% confident` : confidence ? `${Math.round(confidence * 100)}% closest` : "Waiting";
+  confidenceBadge.style.color = accepted ? "var(--green)" : "var(--muted)";
+  confidenceFill.style.width = `${Math.max(0, Math.min(1, confidence)) * 100}%`;
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window) || !text) {
+    showToast("Speech output is not available in this browser.");
     return;
   }
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    cameraNote.textContent = "This browser does not provide camera access.";
-    return;
-  }
-
-  cameraButton.disabled = true;
-  cameraButton.textContent = "Connecting…";
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } },
-      audio: false,
-    });
-    video.srcObject = cameraStream;
-    video.hidden = false;
-    placeholder.hidden = true;
-    cameraOverlay.hidden = false;
-    cameraState.textContent = "Preview live";
-    cameraState.classList.add("on");
-    cameraButton.textContent = "Stop camera";
-    cameraNote.textContent = "Mobile backup is ready. Recognition records only a short clip, then deletes it after processing.";
-    translationText.textContent = "Camera connected";
-    translationDetail.textContent = "Perform either hello or thank you after the three-second countdown.";
-    setActiveStep(1);
-  } catch (error) {
-    cameraNote.textContent = "Camera access was not granted. You can still review the verified model flow.";
-  } finally {
-    cameraButton.disabled = false;
-  }
-});
-
-packageButton.addEventListener("click", async () => {
-  packageButton.disabled = true;
-  packageButton.textContent = "Checking package…";
-  translationText.textContent = "Verifying model package";
-  translationDetail.textContent = "Checking the scoped labels, held-out signer metrics, and confidence gate.";
-  setActiveStep(2);
-
-  try {
-    const response = await fetch("/api/model");
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Model status is unavailable.");
-    translationText.textContent = "Scoped model ready";
-    translationDetail.textContent = `${payload.labels.join(" + ")} · ${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out signer accuracy · ${(payload.minimum_confidence * 100).toFixed(0)}% confidence gate.`;
-    packageButton.textContent = "Scoped model verified";
-  } catch (error) {
-    translationText.textContent = "Model unavailable";
-    translationDetail.textContent = error.message;
-    packageButton.textContent = "Check model package";
-  } finally {
-    packageButton.disabled = false;
-  }
-});
-
-clipInput.addEventListener("change", () => {
-  const [clip] = clipInput.files;
-  analyzeButton.disabled = !clip;
-  clipNote.textContent = clip ? `${clip.name} selected. It will be processed locally and deleted after recognition.` : "Use one clear sign, keep hands and upper body visible, and stay under 169 frames.";
-});
-
-analyzeButton.addEventListener("click", async () => {
-  const [clip] = clipInput.files;
-  if (!clip) return;
-
-  analyzeButton.disabled = true;
-  analyzeButton.textContent = "Analyzing…";
-  translationText.textContent = "Reading landmarks";
-  translationDetail.textContent = "Extracting hands and upper-body pose, then running the local model.";
-  setActiveStep(2);
-
-  try {
-    const formData = new FormData();
-    formData.append("clip", clip);
-    const response = await fetch("/api/recognize", { method: "POST", body: formData });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Recognition could not be completed.");
-
-    showRecognitionResult(payload, clipNote);
-    if (payload.status !== "no_confident_match") clipNote.textContent = "Recognition completed locally. Treat this initial checkpoint as an experimental, scoped-vocabulary result.";
-  } catch (error) {
-    translationText.textContent = "Recognition needs a clearer clip";
-    translationDetail.textContent = error.message;
-    clipNote.textContent = "Try a short, well-lit clip with the signer’s hands and upper body fully visible.";
-  } finally {
-    analyzeButton.disabled = false;
-    analyzeButton.textContent = "Analyze video";
-  }
-});
-
-photosInput.addEventListener("change", () => {
-  const photoCount = photosInput.files.length;
-  analyzePhotosButton.disabled = photoCount < 16;
-  photosNote.textContent = photoCount
-    ? `${photoCount} photos selected. Keep them in capture order; the final photo triggers recognition.`
-    : "Choose at least 16 JPEG photos, in the order a single sign is performed, or start the camera and capture an ordered sequence automatically.";
-});
-
-function wait(milliseconds) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  const selectedVoice = window.speechSynthesis.getVoices().find((voice) => voice.name === voiceSelect.value);
+  if (selectedVoice) utterance.voice = selectedVoice;
+  utterance.lang = "en-IN";
+  window.speechSynthesis.speak(utterance);
 }
 
-async function recordCameraClip(durationMs = 2500) {
-  if (!cameraStream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    throw new Error("Start the mobile camera first, then keep your hands and upper body in view.");
-  }
-  if (!window.MediaRecorder) throw new Error("This browser cannot record a mobile camera clip.");
-
-  const supportedType = ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-  const recorder = supportedType ? new MediaRecorder(cameraStream, { mimeType: supportedType }) : new MediaRecorder(cameraStream);
-  const chunks = [];
-  recorder.addEventListener("dataavailable", (event) => {
-    if (event.data.size) chunks.push(event.data);
+function loadVoices() {
+  if (!("speechSynthesis" in window)) return;
+  const previous = voiceSelect.value;
+  const voices = window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  voiceSelect.innerHTML = '<option value="">System default</option>';
+  voices.forEach((voice) => {
+    const option = document.createElement("option");
+    option.value = voice.name;
+    option.textContent = `${voice.name} (${voice.lang})`;
+    voiceSelect.append(option);
   });
+  if (voices.some((voice) => voice.name === previous)) voiceSelect.value = previous;
+}
+
+async function loadModel() {
+  try {
+    const response = await fetch("/api/model", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Model unavailable");
+    modelLabels = payload.labels;
+    modelPill.classList.add("is-ready");
+    modelPillText.textContent = `${payload.labels.length} signs ready`;
+    settingsModelDetail.textContent = `${payload.model} · ${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out accuracy`;
+    renderVocabulary();
+  } catch (error) {
+    modelPill.classList.add("is-error");
+    modelPillText.textContent = "Model unavailable";
+    settingsModelDetail.textContent = error.message;
+    actionNote.textContent = "Start the local Python service and refresh this page.";
+  }
+}
+
+function renderVocabulary(query = "") {
+  const normalized = query.trim().toLowerCase();
+  const labels = modelLabels.filter((label) => label.includes(normalized));
+  vocabularyCount.textContent = `${modelLabels.length} trained`;
+  wordList.replaceChildren();
+  labels.forEach((label) => {
+    const row = document.createElement("article");
+    row.className = "word-row";
+    row.innerHTML = `<span class="word-letter">${formatLabel(label).charAt(0)}</span><div><b></b><small>Trained and enabled</small></div><button type="button" aria-label="Speak ${formatLabel(label)}">◖))</button>`;
+    $("b", row).textContent = formatLabel(label);
+    $("button", row).addEventListener("click", () => speak(formatLabel(label)));
+    wordList.append(row);
+  });
+  if (!labels.length) {
+    const empty = document.createElement("p");
+    empty.className = "action-note";
+    empty.textContent = "That word is not trained yet. Collect examples before adding it to the model.";
+    wordList.append(empty);
+  }
+}
+
+async function refreshCameraChoices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const cameras = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === "videoinput");
+  const current = cameraSelect.value;
+  cameraSelect.innerHTML = '<option value="">Default camera</option>';
+  cameras.forEach((camera, index) => {
+    const option = document.createElement("option");
+    option.value = camera.deviceId;
+    option.textContent = camera.label || `Camera ${index + 1}`;
+    cameraSelect.append(option);
+  });
+  if (cameras.some((camera) => camera.deviceId === current)) cameraSelect.value = current;
+}
+
+function stopCamera() {
+  cameraStream?.getTracks().forEach((track) => track.stop());
+  cameraStream = null;
+  cameraPreview.srcObject = null;
+  cameraPanel.classList.remove("is-on");
+  cameraStatus.textContent = "Camera off";
+  cameraToggle.textContent = "Start camera";
+}
+
+async function startCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("Live camera needs localhost or HTTPS. Use the phone-camera upload button instead.");
+  stopCamera();
+  const deviceId = cameraSelect.value;
+  cameraStream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } } : { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
+  });
+  cameraPreview.srcObject = cameraStream;
+  await cameraPreview.play();
+  cameraPanel.classList.add("is-on");
+  cameraStatus.textContent = "Camera live";
+  cameraToggle.textContent = "Stop camera";
+  await refreshCameraChoices();
+  return cameraStream;
+}
+
+async function runCountdown() {
+  countdown.hidden = false;
+  for (let count = 3; count >= 1; count -= 1) {
+    countdown.textContent = count;
+    actionNote.textContent = count === 1 ? "Get ready to perform the complete sign." : "Keep your hands inside the guide.";
+    await wait(850);
+  }
+  countdown.textContent = "SIGN";
+  await wait(350);
+  countdown.hidden = true;
+}
+
+function supportedMimeType() {
+  const candidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"];
+  return candidates.find((type) => window.MediaRecorder?.isTypeSupported(type)) || "";
+}
+
+async function recordCameraClip(duration = 2500) {
+  if (!cameraStream) await startCamera();
+  if (!("MediaRecorder" in window)) throw new Error("This browser cannot record a camera clip. Use the phone-camera upload button.");
+  const chunks = [];
+  const mimeType = supportedMimeType();
+  const recorder = mimeType ? new MediaRecorder(cameraStream, { mimeType }) : new MediaRecorder(cameraStream);
+  recorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
   const stopped = new Promise((resolve, reject) => {
     recorder.addEventListener("stop", resolve, { once: true });
     recorder.addEventListener("error", () => reject(new Error("The camera recording failed.")), { once: true });
   });
-  recorder.start(250);
-  await wait(durationMs);
+  recorder.start(150);
+  await wait(duration);
   recorder.stop();
   await stopped;
-  const type = recorder.mimeType || "video/webm";
-  const extension = type.includes("mp4") ? "mp4" : "webm";
-  return new File([new Blob(chunks, { type })], `mobile-sign.${extension}`, { type });
+  if (!chunks.length) throw new Error("The camera did not return a recording.");
+  return new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" });
 }
 
-async function analyzePhotoSequence(photos) {
-  const sequenceId = `browser-${Date.now()}`;
-  translationText.textContent = "Reading photo sequence";
-  translationDetail.textContent = "Sending snapshots through the same path the ESP32 will use.";
-  setActiveStep(2);
+async function sendRecognitionClip(blob, filename = "ishaara-camera.webm") {
+  const form = new FormData();
+  form.append("clip", blob, filename);
+  const response = await fetch("/api/mobile/recognize", { method: "POST", body: form });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Recognition failed.");
+  return payload;
+}
 
-  try {
-    let payload;
-    for (let index = 0; index < photos.length; index += 1) {
-      const formData = new FormData();
-      formData.append("sequence_id", sequenceId);
-      formData.append("frame", photos[index]);
-      formData.append("final", String(index === photos.length - 1));
-      const response = await fetch("/api/frames", { method: "POST", body: formData });
-      payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "The photo sequence could not be processed.");
-      photosNote.textContent = index === photos.length - 1
-        ? "Done. The recognition result is shown above."
-        : `Converted photo ${index + 1} of ${photos.length} to landmarks…`;
-    }
-
-    if (payload.status === "no_confident_match") {
-      translationText.textContent = "No confident match";
-      translationDetail.textContent = `Closest tentative match: ${payload.closest_label} (${(payload.confidence * 100).toFixed(1)}%). Signer hands were detected in ${payload.signer_hand_frames} of ${payload.frames_received} photos.`;
-      photosNote.textContent = "This is diagnostic information, not a translation. It helps distinguish missing hand tracking from a model mismatch.";
-      return;
-    }
-
-    const [topCandidate, ...otherCandidates] = payload.candidates;
-    translationText.textContent = topCandidate.label;
-    translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
-  } catch (error) {
-    translationText.textContent = "Recognition needs clearer photos";
-    translationDetail.textContent = error.message;
-    photosNote.textContent = "Use a well-lit, ordered JPEG sequence with the signer’s hands and upper body in every photo.";
-  } finally {
-    analyzePhotosButton.disabled = photosInput.files.length < 16;
-    analyzePhotosButton.textContent = "Analyze photos";
+function presentRecognition(payload) {
+  if (payload.status === "no_confident_match") {
+    currentResult = "";
+    speakResultButton.disabled = true;
+    updateRecognitionState("No confident match", "Return to neutral and repeat one trained sign with both hands visible.", payload.confidence || 0, false);
+    actionNote.textContent = "The confidence gate rejected this sample instead of guessing.";
+    return;
   }
+  const winner = payload.candidates[0];
+  currentResult = formatLabel(winner.label);
+  speakResultButton.disabled = false;
+  updateRecognitionState(currentResult, "Accepted by the scoped local model. Tap the speaker to say it aloud.", winner.confidence, true);
+  conversationSign.textContent = currentResult;
+  actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
 }
 
-analyzePhotosButton.addEventListener("click", async () => {
-  const photos = [...photosInput.files];
-  if (photos.length < 16) return;
-
-  analyzePhotosButton.disabled = true;
-  analyzePhotosButton.textContent = "Processing…";
-  await analyzePhotoSequence(photos);
-});
-
-mobileRecognizeButton.addEventListener("click", async () => {
-  mobileRecognizeButton.disabled = true;
+async function recognizeFromLiveCamera() {
+  recognizeButton.disabled = true;
+  mobileCaptureButton.disabled = true;
   try {
-    for (let count = 3; count > 0; count -= 1) {
-      mobileRecognizeButton.textContent = `Get ready… ${count}`;
-      mobileNote.textContent = "Keep both hands and your upper body inside the frame.";
-      await wait(650);
-    }
-    mobileRecognizeButton.textContent = "Recording now… perform one sign";
-    mobileNote.textContent = "Perform hello or thank you now.";
+    if (!cameraStream) await startCamera();
+    await runCountdown();
+    actionNote.textContent = "Recording now — perform one complete sign.";
+    recognizeButton.textContent = "Recording…";
     const clip = await recordCameraClip();
-    mobileRecognizeButton.textContent = "Recognizing…";
-    translationText.textContent = "Reading mobile video";
-    translationDetail.textContent = "Extracting hand and upper-body landmarks from the short recording.";
-    setActiveStep(2);
-    const formData = new FormData();
-    formData.append("clip", clip);
-    const response = await fetch("/api/mobile/recognize", { method: "POST", body: formData });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "The mobile recording could not be recognized.");
-    showRecognitionResult(payload, mobileNote);
-    if (payload.status !== "no_confident_match") mobileNote.textContent = "Scoped ISL recognition completed locally; the short recording was deleted.";
+    recognizeButton.textContent = "Reading landmarks…";
+    updateRecognitionState("Reading your sign", "Extracting hand and upper-body landmarks on this computer.");
+    presentRecognition(await sendRecognitionClip(clip));
   } catch (error) {
-    translationText.textContent = "Mobile recognition needs a clearer sign";
-    translationDetail.textContent = error.message;
-    mobileNote.textContent = "Keep one signer’s hands and upper body in frame, then try again.";
+    updateRecognitionState("Could not recognize", error.message);
+    actionNote.textContent = "Improve lighting, keep both hands visible, and try again.";
   } finally {
-    mobileRecognizeButton.disabled = false;
-    mobileRecognizeButton.textContent = "Record and recognize (2.5 seconds)";
+    recognizeButton.disabled = false;
+    mobileCaptureButton.disabled = false;
+    recognizeButton.textContent = "Recognize one sign";
+    countdown.hidden = true;
   }
-});
+}
 
-saveTrainingButton.addEventListener("click", async () => {
-  const label = trainingLabel.value.trim();
-  const signer = trainingSigner.value.trim();
+async function recognizeUploadedClip(file) {
+  recognizeButton.disabled = true;
+  mobileCaptureButton.disabled = true;
+  updateRecognitionState("Reading phone clip", "Uploading to the local Ishaara service for landmark extraction.");
+  actionNote.textContent = "Processing the selected camera recording…";
+  try {
+    presentRecognition(await sendRecognitionClip(file, file.name || "phone-sign.mp4"));
+  } catch (error) {
+    updateRecognitionState("Could not recognize", error.message);
+    actionNote.textContent = "Use one short, well-lit clip with hands and upper body visible.";
+  } finally {
+    recognizeButton.disabled = false;
+    mobileCaptureButton.disabled = false;
+    mobileCaptureInput.value = "";
+  }
+}
+
+async function saveTrainingCapture() {
+  const label = trainingLabel.value.trim().toLowerCase();
+  const signer = trainingSigner.value.trim().toLowerCase();
   if (!label || !signer) {
-    trainingNote.textContent = "Enter the sign label and a non-identifying signer code before recording.";
+    trainingStatus.textContent = "Enter both the exact sign label and a non-identifying signer code.";
     return;
   }
-  saveTrainingButton.disabled = true;
-  saveTrainingButton.textContent = "Recording…";
+  trainingButton.disabled = true;
+  trainingButton.textContent = "Preparing camera…";
   try {
+    if (!cameraStream) await startCamera();
+    trainingStatus.textContent = "Perform the sign now for 2.5 seconds.";
+    trainingButton.textContent = "Recording…";
     const clip = await recordCameraClip();
-    saveTrainingButton.textContent = "Saving…";
-    const formData = new FormData();
-    formData.append("label", label);
-    formData.append("signer", signer);
-    formData.append("clip", clip);
-    const response = await fetch("/api/training/captures", { method: "POST", body: formData });
+    const form = new FormData();
+    form.append("label", label);
+    form.append("signer", signer);
+    form.append("clip", clip, "training-example.webm");
+    trainingButton.textContent = "Saving locally…";
+    const response = await fetch("/api/training/captures", { method: "POST", body: form });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "The labelled capture could not be saved.");
-    trainingNote.textContent = `Saved “${payload.label}”. Record this sign again with different framing, lighting, and signers.`;
+    if (!response.ok) throw new Error(payload.error || "Could not save the recording.");
+    trainingStatus.textContent = `Saved one ${formatLabel(label)} example for ${signer}. Repeat with varied angles and lighting.`;
+    showToast("Training example saved locally.");
   } catch (error) {
-    trainingNote.textContent = error.message;
+    trainingStatus.textContent = error.message;
   } finally {
-    saveTrainingButton.disabled = false;
-    saveTrainingButton.textContent = "Record and save";
+    trainingButton.disabled = false;
+    trainingButton.textContent = "Record and save 2.5 seconds";
   }
-});
-
-captureSequenceButton.addEventListener("click", async () => {
-  if (!cameraStream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    photosNote.textContent = "Start the camera first, then click this again while performing one supported sign.";
-    return;
-  }
-
-  captureSequenceButton.disabled = true;
-  captureSequenceButton.textContent = "Capturing…";
-  const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const context = canvas.getContext("2d");
-  const photos = [];
-  try {
-    for (let index = 0; index < 20; index += 1) {
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const photo = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-      if (!photo) throw new Error("The camera snapshot could not be created.");
-      photos.push(new File([photo], `snapshot-${index + 1}.jpg`, { type: "image/jpeg" }));
-      photosNote.textContent = `Captured photo ${index + 1} of 20… keep signing.`;
-      await wait(100);
-    }
-    captureSequenceButton.textContent = "Analyzing…";
-    await analyzePhotoSequence(photos);
-  } catch (error) {
-    translationText.textContent = "Photo capture failed";
-    translationDetail.textContent = error.message;
-    photosNote.textContent = "Start the camera, allow camera access, and keep the signer in frame.";
-  } finally {
-    captureSequenceButton.disabled = false;
-    captureSequenceButton.textContent = "Capture a 2-second photo sequence";
-  }
-});
-
-function renderVocabulary(filter = "") {
-  const query = filter.trim().toLowerCase();
-  const visibleWords = vocabulary.filter((word) => word.includes(query));
-  vocabularyList.replaceChildren(...visibleWords.map((word) => {
-    const chip = document.createElement("span");
-    chip.textContent = word;
-    return chip;
-  }));
-  vocabularyNote.textContent = query
-    ? `${visibleWords.length} matching supported word${visibleWords.length === 1 ? "" : "s"}.`
-    : `${vocabulary.length} exact labels in the current checkpoint. Test only one of these signs at a time.`;
 }
 
-vocabularyButton.addEventListener("click", async () => {
-  if (!vocabularyContent.hidden) {
-    vocabularyContent.hidden = true;
-    vocabularyButton.textContent = "Show supported prototype words";
-    return;
-  }
+function appendConversationMessage(text) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message spoken";
+  const label = document.createElement("small");
+  label.textContent = "They said";
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  wrapper.append(label, paragraph);
+  conversationLog.append(wrapper);
+  conversationLog.scrollTop = conversationLog.scrollHeight;
+}
 
-  vocabularyContent.hidden = false;
-  vocabularyButton.textContent = "Hide supported prototype words";
-  if (vocabulary.length) return;
-
-  vocabularyButton.disabled = true;
-  vocabularyNote.textContent = "Loading the model vocabulary…";
-  try {
-    const response = await fetch("/api/vocabulary");
-    const payload = await response.json();
-    if (!response.ok) throw new Error("The model vocabulary could not be loaded.");
-    vocabulary = payload.labels;
-    renderVocabulary();
-  } catch (error) {
-    vocabularyNote.textContent = error.message;
-  } finally {
-    vocabularyButton.disabled = false;
-  }
+$$('[data-route]').forEach((button) => button.addEventListener("click", () => setRoute(button.dataset.route)));
+$("#brand-home").addEventListener("click", () => setRoute("home"));
+$("#get-started").addEventListener("click", dismissOnboarding);
+$("#skip-onboarding").addEventListener("click", dismissOnboarding);
+$("#show-welcome").addEventListener("click", () => onboarding.classList.remove("is-hidden"));
+cameraToggle.addEventListener("click", async () => {
+  if (cameraStream) { stopCamera(); return; }
+  try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
 });
-
+cameraSelect.addEventListener("change", async () => {
+  if (!cameraStream) return;
+  try { await startCamera(); } catch (error) { showToast(error.message); }
+});
+recognizeButton.addEventListener("click", recognizeFromLiveCamera);
+mobileCaptureButton.addEventListener("click", () => mobileCaptureInput.click());
+mobileCaptureInput.addEventListener("change", () => {
+  const [file] = mobileCaptureInput.files;
+  if (file) recognizeUploadedClip(file);
+});
+speakResultButton.addEventListener("click", () => speak(currentResult));
+$("#conversation-recognize").addEventListener("click", () => setRoute("home"));
+$("#message-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("#message-input");
+  const text = input.value.trim();
+  if (!text) return;
+  appendConversationMessage(text);
+  speak(text);
+  input.value = "";
+});
 vocabularySearch.addEventListener("input", () => renderVocabulary(vocabularySearch.value));
+$("#open-training").addEventListener("click", () => trainingDialog.showModal());
+$("#close-training").addEventListener("click", () => trainingDialog.close());
+trainingButton.addEventListener("click", saveTrainingCapture);
+$("#emergency-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  speak(button.textContent.trim());
+  showToast("Emergency phrase spoken aloud.");
+});
+$$('[data-theme-choice]').forEach((button) => button.addEventListener("click", () => {
+  const theme = button.dataset.themeChoice;
+  document.body.dataset.theme = theme;
+  window.localStorage.setItem("ishaara-theme", theme);
+  $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice === button));
+}));
 
-async function loadActiveModelSummary() {
-  try {
-    const response = await fetch("/api/model");
-    const payload = await response.json();
-    if (!response.ok) throw new Error("Model unavailable");
-    modelChipTitle.textContent = `${payload.labels.length}-sign model validated`;
-    modelChipDetail.textContent = `${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out signer accuracy`;
-  } catch (_error) {
-    modelChipTitle.textContent = "Scoped model unavailable";
-    modelChipDetail.textContent = "Train or configure the local checkpoint";
-  }
-}
+window.addEventListener("beforeunload", stopCamera);
+if ("speechSynthesis" in window) window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
 
-loadActiveModelSummary();
+const storedTheme = window.localStorage.getItem("ishaara-theme") || "light";
+document.body.dataset.theme = storedTheme;
+$$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice.dataset.themeChoice === storedTheme));
+if (window.localStorage.getItem("ishaara-onboarded") === "true") onboarding.classList.add("is-hidden");
+loadVoices();
+loadModel();
