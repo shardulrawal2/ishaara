@@ -17,7 +17,13 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from photo_stream_recognition import MINIMUM_CONFIDENCE, MINIMUM_FRAMES, SnapshotSequence
-from recognize_video import load_labels, recognize
+from recognize_refined import (
+    MINIMUM_CONFIDENCE as REFINED_MINIMUM_CONFIDENCE,
+    labels as refined_labels,
+    model_metrics as refined_model_metrics,
+    recognize as recognize_refined,
+)
+from recognize_video import recognize
 
 
 ROOT = Path(__file__).resolve().parent
@@ -32,7 +38,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 
-def classify_clip(clip) -> tuple[list[tuple[str, float]], Path | None]:
+def classify_clip(clip, recognizer=recognize) -> tuple[list[tuple[str, float]], Path | None]:
     """Run a temporary mobile or uploaded video through the native video path."""
 
     suffix = Path(clip.filename).suffix.lower()
@@ -44,18 +50,18 @@ def classify_clip(clip) -> tuple[list[tuple[str, float]], Path | None]:
         with tempfile.NamedTemporaryFile(prefix="ishaara-upload-", suffix=suffix, delete=False) as file:
             temporary_path = Path(file.name)
             clip.save(file)
-        return recognize(temporary_path, top_k=3), temporary_path
+        return recognizer(temporary_path, top_k=3), temporary_path
     except Exception:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         raise
 
 
-def recognition_response(candidates: list[tuple[str, float]]):
+def recognition_response(candidates: list[tuple[str, float]], minimum_confidence: float = MINIMUM_CONFIDENCE):
     """Avoid presenting an arbitrary low-probability class as a translation."""
 
     top_label, confidence = candidates[0]
-    if confidence < MINIMUM_CONFIDENCE:
+    if confidence < minimum_confidence:
         return jsonify(
             status="no_confident_match",
             confidence=confidence,
@@ -88,10 +94,20 @@ def serve_asset(asset_path: str):
 
 @app.get("/api/vocabulary")
 def prototype_vocabulary():
-    """Expose the exact labels supported by the current checkpoint."""
+    """Expose the exact labels supported by the active mobile MVP model."""
 
-    labels = sorted(load_labels().values())
+    labels = sorted(refined_labels())
     return jsonify(label_count=len(labels), labels=labels)
+
+
+@app.get("/api/model")
+def active_model_status():
+    return jsonify(
+        model="Ishaara scoped ISL refinement",
+        labels=refined_labels(),
+        minimum_confidence=REFINED_MINIMUM_CONFIDENCE,
+        metrics=refined_model_metrics(),
+    )
 
 
 @app.post("/api/recognize")
@@ -102,8 +118,8 @@ def recognize_clip():
 
     temporary_path: Path | None = None
     try:
-        candidates, temporary_path = classify_clip(clip)
-        return recognition_response(candidates)
+        candidates, temporary_path = classify_clip(clip, recognizer=recognize_refined)
+        return recognition_response(candidates, minimum_confidence=REFINED_MINIMUM_CONFIDENCE)
     except ValueError as error:
         return jsonify(error=str(error)), 422
     except Exception:
@@ -124,8 +140,8 @@ def recognize_mobile_clip():
 
     temporary_path: Path | None = None
     try:
-        candidates, temporary_path = classify_clip(clip)
-        return recognition_response(candidates)
+        candidates, temporary_path = classify_clip(clip, recognizer=recognize_refined)
+        return recognition_response(candidates, minimum_confidence=REFINED_MINIMUM_CONFIDENCE)
     except ValueError as error:
         return jsonify(error=str(error)), 422
     except Exception:

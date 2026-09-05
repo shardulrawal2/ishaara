@@ -61,6 +61,22 @@ def load_feature_tensor(video_path: Path) -> np.ndarray:
             raise ValueError(
                 f"This clip has {int(raw.n_frames)} frames; use a clip of {WINDOW_SIZE} frames or fewer."
             )
+        hand_values = np.concatenate(
+            (
+                np.asarray(raw.hand1_x, dtype=np.float32),
+                np.asarray(raw.hand1_y, dtype=np.float32),
+                np.asarray(raw.hand2_x, dtype=np.float32),
+                np.asarray(raw.hand2_y, dtype=np.float32),
+            ),
+            axis=1,
+        )
+        hand_frames = int(np.isfinite(hand_values).any(axis=1).sum())
+        required_hand_frames = max(3, int(np.ceil(int(raw.n_frames) * 0.2)))
+        if hand_frames < required_hand_frames:
+            raise ValueError(
+                f"Hands were tracked in only {hand_frames} frames; at least {required_hand_frames} are required. "
+                "Move closer, improve lighting, and keep both hands visible."
+            )
 
         source_label = "".join(character for character in str(raw.label) if character.isalpha()).lower()
         dataset = KeypointsDataset(

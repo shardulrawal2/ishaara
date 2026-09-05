@@ -12,5 +12,8 @@ data/demo-clips/
 
 # Explicitly-consented local ISL recordings used for future model refinement.
 data/isl-field-captures/
-data/isl-training-keypoints/
-artifacts/isl-refinement/
+data/isl-training-keypoints*/
+artifacts/*
+!artifacts/hello-thankyou-v1/
+!artifacts/hello-thankyou-v1/ishaara_isl_refinement.pth
+!artifacts/hello-thankyou-v1/metrics.json

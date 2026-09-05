@@ -26,6 +26,8 @@ const vocabularyContent = document.querySelector("#vocabulary-content");
 const vocabularySearch = document.querySelector("#vocabulary-search");
 const vocabularyList = document.querySelector("#vocabulary-list");
 const vocabularyNote = document.querySelector("#vocabulary-note");
+const modelChipTitle = document.querySelector("#model-chip-title");
+const modelChipDetail = document.querySelector("#model-chip-detail");
 
 let cameraStream;
 let vocabulary = [];
@@ -59,8 +61,8 @@ cameraButton.addEventListener("click", async () => {
     cameraState.classList.remove("on");
     cameraButton.textContent = "Start camera";
     cameraNote.textContent = "Your video stays in this browser preview.";
-    translationText.textContent = "Waiting for landmarks";
-    translationDetail.textContent = "The model is packaged and validated. Native hand + pose landmarks are the next step.";
+    translationText.textContent = "Ready for hello or thank you";
+    translationDetail.textContent = "Start the camera and record one clear sign. Uncertain results are rejected.";
     setActiveStep(0);
     return;
   }
@@ -86,7 +88,7 @@ cameraButton.addEventListener("click", async () => {
     cameraButton.textContent = "Stop camera";
     cameraNote.textContent = "Mobile backup is ready. Recognition records only a short clip, then deletes it after processing.";
     translationText.textContent = "Camera connected";
-    translationDetail.textContent = "Live video is ready. The next native milestone turns each frame into the 134 landmark values required by the model.";
+    translationDetail.textContent = "Perform either hello or thank you after the three-second countdown.";
     setActiveStep(1);
   } catch (error) {
     cameraNote.textContent = "Camera access was not granted. You can still review the verified model flow.";
@@ -95,19 +97,27 @@ cameraButton.addEventListener("click", async () => {
   }
 });
 
-packageButton.addEventListener("click", () => {
+packageButton.addEventListener("click", async () => {
   packageButton.disabled = true;
   packageButton.textContent = "Checking package…";
   translationText.textContent = "Verifying model package";
-  translationDetail.textContent = "Checking the fixed input contract and mobile-ready ORT bundle.";
+  translationDetail.textContent = "Checking the scoped labels, held-out signer metrics, and confidence gate.";
   setActiveStep(2);
 
-  window.setTimeout(() => {
-    translationText.textContent = "Model package ready";
-    translationDetail.textContent = "Verified: 169 frames × 134 landmark values → 263 output classes. The ORT package is 3.74 MB and ready for native app wiring.";
-    packageButton.textContent = "Model package verified";
+  try {
+    const response = await fetch("/api/model");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Model status is unavailable.");
+    translationText.textContent = "Scoped model ready";
+    translationDetail.textContent = `${payload.labels.join(" + ")} · ${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out signer accuracy · ${(payload.minimum_confidence * 100).toFixed(0)}% confidence gate.`;
+    packageButton.textContent = "Scoped model verified";
+  } catch (error) {
+    translationText.textContent = "Model unavailable";
+    translationDetail.textContent = error.message;
+    packageButton.textContent = "Check model package";
+  } finally {
     packageButton.disabled = false;
-  }, 750);
+  }
 });
 
 clipInput.addEventListener("change", () => {
@@ -234,8 +244,14 @@ analyzePhotosButton.addEventListener("click", async () => {
 
 mobileRecognizeButton.addEventListener("click", async () => {
   mobileRecognizeButton.disabled = true;
-  mobileRecognizeButton.textContent = "Recording… perform one sign";
   try {
+    for (let count = 3; count > 0; count -= 1) {
+      mobileRecognizeButton.textContent = `Get ready… ${count}`;
+      mobileNote.textContent = "Keep both hands and your upper body inside the frame.";
+      await wait(650);
+    }
+    mobileRecognizeButton.textContent = "Recording now… perform one sign";
+    mobileNote.textContent = "Perform hello or thank you now.";
     const clip = await recordCameraClip();
     mobileRecognizeButton.textContent = "Recognizing…";
     translationText.textContent = "Reading mobile video";
@@ -247,7 +263,7 @@ mobileRecognizeButton.addEventListener("click", async () => {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "The mobile recording could not be recognized.");
     showRecognitionResult(payload, mobileNote);
-    if (payload.status !== "no_confident_match") mobileNote.textContent = "Mobile backup recognition completed locally; the short recording was deleted.";
+    if (payload.status !== "no_confident_match") mobileNote.textContent = "Scoped ISL recognition completed locally; the short recording was deleted.";
   } catch (error) {
     translationText.textContent = "Mobile recognition needs a clearer sign";
     translationDetail.textContent = error.message;
@@ -360,3 +376,18 @@ vocabularyButton.addEventListener("click", async () => {
 });
 
 vocabularySearch.addEventListener("input", () => renderVocabulary(vocabularySearch.value));
+
+async function loadActiveModelSummary() {
+  try {
+    const response = await fetch("/api/model");
+    const payload = await response.json();
+    if (!response.ok) throw new Error("Model unavailable");
+    modelChipTitle.textContent = `${payload.labels.length}-sign model validated`;
+    modelChipDetail.textContent = `${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out signer accuracy`;
+  } catch (_error) {
+    modelChipTitle.textContent = "Scoped model unavailable";
+    modelChipDetail.textContent = "Train or configure the local checkpoint";
+  }
+}
+
+loadActiveModelSummary();

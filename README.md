@@ -109,6 +109,8 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 | 5 | Speech-to-caption return path | Roadmap |
 | 6 | Continuous signing and group conversations | Research roadmap |
 
+> **Current working demo:** the laptop/mobile-camera MVP is intentionally limited to the team-trained `hello` and `thankyou` model. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope, measured held-out results, and exact demonstration procedure.
+
 ### Current ML refinement path
 
 The current checkpoint is a useful baseline, but it must not be treated as proof of accuracy for a new signer or a new capture device. Ishaara therefore keeps two capture routes active:

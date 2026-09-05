@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Ishaara prototype review build: camera preview and verified on-device model package."
+      content="Ishaara scoped ISL MVP: locally trained hello and thank-you recognition from a camera."
     />
     <title>Ishaara — Prototype Review</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -17,7 +17,7 @@
           <span class="brand-mark" aria-hidden="true">ि</span>
           <span>Ishaara</span>
         </a>
-        <div class="review-pill"><span></span> Review build · v0.1</div>
+        <div class="review-pill"><span></span> Working MVP · v0.2</div>
       </header>
 
       <section class="intro" id="top">
@@ -25,13 +25,13 @@
           <p class="eyebrow">Hands-free communication, in progress</p>
           <h1>From a sign<br /><em>to shared understanding.</em></h1>
           <p class="lede">
-            A transparent prototype of Ishaara’s camera-to-translation flow. Use the phone
-            camera as the working backup while the ESP32-CAM continues to send photo sequences.
+            A focused, locally trained ISL prototype that recognizes two demonstrated signs
+            from a laptop or phone camera: hello and thank you.
           </p>
         </div>
         <div class="model-chip">
           <span class="pulse" aria-hidden="true"></span>
-          <div><strong>Model package verified</strong><small>3.74 MB · on-device ORT</small></div>
+          <div><strong id="model-chip-title">Scoped model validated</strong><small id="model-chip-detail">85.7% held-out signer accuracy</small></div>
         </div>
       </section>
 
@@ -70,14 +70,14 @@
               <p class="section-label">02 · Interpret</p>
               <h2>Translation status</h2>
             </div>
-            <span class="live-pill">ON DEVICE</span>
+            <span class="live-pill">LOCAL MVP</span>
           </div>
 
           <div class="translation-surface" aria-live="polite">
             <p class="translation-label">CURRENT OUTPUT</p>
-            <p class="translation-text" id="translation-text">Waiting for landmarks</p>
+            <p class="translation-text" id="translation-text">Ready for hello or thank you</p>
             <p class="translation-detail" id="translation-detail">
-              The model is packaged and validated. Native hand + pose landmarks are the next step.
+              Start the camera, then record one clear 2.5-second sign. Uncertain results are rejected.
             </p>
           </div>
 
@@ -95,7 +95,7 @@
           <div class="mobile-backup">
             <span class="backup-badge">MOBILE BACKUP</span>
             <h3>Recognize a sign from this phone</h3>
-            <p>Records a short clip from the live camera and uses the model’s native video path. The recording is deleted after recognition.</p>
+            <p>Records a short clip, extracts 134 hand and upper-body coordinates per frame, and runs the team-trained model. The recording is deleted after recognition.</p>
             <button class="capture-button" id="mobile-recognize-button" type="button">Record and recognize (2.5 seconds)</button>
             <p id="mobile-note">Start the camera, frame your hands and upper body, then perform one sign.</p>
           </div>
@@ -108,13 +108,13 @@
             <p id="clip-note">Use one clear sign, keep hands and upper body visible, and stay under 169 frames.</p>
           </div>
           <div class="photo-uploader">
-            <label class="clip-label" for="photos-input">ESP32 photo-sequence path</label>
+            <label class="clip-label" for="photos-input">Hardware path · development only</label>
             <div class="clip-controls">
               <input id="photos-input" type="file" accept="image/jpeg" multiple />
               <button class="upload-button" id="analyze-photos-button" type="button" disabled>Analyze photos</button>
             </div>
             <button class="capture-button" id="capture-sequence-button" type="button">Capture a 2-second photo sequence</button>
-            <p id="photos-note">Choose at least 16 JPEG photos, in the order a single sign is performed, or start the camera and capture an ordered sequence automatically.</p>
+            <p id="photos-note">This preserves the ESP32 JPEG contract but is not part of the three-hour webcam MVP.</p>
           </div>
           <div class="training-capture">
             <span class="backup-badge">DATA COLLECTION</span>
@@ -130,8 +130,8 @@
           <div class="vocabulary-panel">
             <button class="secondary-button" id="vocabulary-button" type="button">Show supported prototype words</button>
             <div id="vocabulary-content" hidden>
-              <input id="vocabulary-search" type="search" placeholder="Search the 263 supported words" />
-              <p id="vocabulary-note">These are the exact labels in the current checkpoint. Test only one of these signs at a time.</p>
+              <input id="vocabulary-search" type="search" placeholder="Search supported MVP words" />
+              <p id="vocabulary-note">Only the team-trained scoped labels are enabled. Test one sign at a time.</p>
               <div class="vocabulary-list" id="vocabulary-list"></div>
             </div>
           </div>
@@ -140,17 +140,18 @@
 
       <section class="proof-grid" aria-label="Prototype facts">
         <article><span>Input contract</span><strong>169 × 134</strong><small>Frames × landmark values</small></article>
-        <article><span>Output space</span><strong>263 classes</strong><small>Scoped initial checkpoint</small></article>
-        <article><span>Model format</span><strong>ORT</strong><small>Optimized for mobile bundling</small></article>
-        <article><span>Capture modes</span><strong>2 paths</strong><small>Mobile video + ESP32 JPEGs</small></article>
+        <article><span>Output space</span><strong>2 signs</strong><small>Hello + thank you</small></article>
+        <article><span>Held-out test</span><strong>85.7%</strong><small>Unseen teammate accuracy</small></article>
+        <article><span>Accepted test</span><strong>91.5%</strong><small>At 75% confidence gate</small></article>
       </section>
 
       <section class="scope-note">
         <span>What this proves today</span>
         <p>
-          The current video-trained checkpoint is a baseline, not an accuracy claim for new signers.
-          Mobile video is the immediate backup. The ESP32 endpoint remains active, and labelled,
-          consented ISL captures are the path to a properly evaluated refined model.
+          The live demo uses the team’s own signer-separated hello/thank-you model. It reached
+          85.7% overall accuracy on 63 clips from a teammate excluded from training; accepted
+          predictions reached 91.5% accuracy at the configured confidence gate. This is a scoped
+          two-sign MVP, not unrestricted ISL translation.
         </p>
       </section>
     </main>

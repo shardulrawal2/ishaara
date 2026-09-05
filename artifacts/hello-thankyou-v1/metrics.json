@@ -1,0 +1,9 @@
+{
+  "labels": [
+    "hello",
+    "thankyou"
+  ],
+  "validation_macro_f1": 0.8235294117647058,
+  "held_out_signer_accuracy": 0.8571428571428571,
+  "held_out_signer_macro_f1": 0.8548015364916772
+}
