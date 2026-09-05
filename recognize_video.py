@@ -16,6 +16,7 @@ import argparse
 import json
 import sys
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -84,14 +85,20 @@ def load_labels() -> dict[int, str]:
     return {int(index): label for label, index in label_to_index.items()}
 
 
-def recognize(video_path: Path, top_k: int) -> list[tuple[str, float]]:
-    if not video_path.is_file():
-        raise FileNotFoundError(f"Video not found: {video_path}")
+@lru_cache(maxsize=1)
+def get_inference_session() -> ort.InferenceSession:
     if not MODEL_PATH.is_file():
         raise FileNotFoundError(f"Model package not found: {MODEL_PATH}")
+    return ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
 
-    input_tensor = load_feature_tensor(video_path)
-    session = ort.InferenceSession(str(MODEL_PATH), providers=["CPUExecutionProvider"])
+
+def recognize_feature_tensor(input_tensor: np.ndarray, top_k: int) -> list[tuple[str, float]]:
+    """Run the model on one already-prepared (1, 169, 134) landmark tensor."""
+
+    if input_tensor.shape != (1, WINDOW_SIZE, FEATURE_DIM):
+        raise ValueError(f"Expected a (1, {WINDOW_SIZE}, {FEATURE_DIM}) feature tensor.")
+
+    session = get_inference_session()
     probabilities = session.run(
         ["class_probabilities"],
         {"keypoint_sequence": input_tensor},
@@ -100,6 +107,12 @@ def recognize(video_path: Path, top_k: int) -> list[tuple[str, float]]:
     labels = load_labels()
     ranked_indices = np.argsort(probabilities)[::-1][:top_k]
     return [(labels[int(index)], float(probabilities[int(index)])) for index in ranked_indices]
+
+
+def recognize(video_path: Path, top_k: int) -> list[tuple[str, float]]:
+    if not video_path.is_file():
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    return recognize_feature_tensor(load_feature_tensor(video_path), top_k)
 
 
 def main() -> None:

@@ -7,19 +7,32 @@ file just long enough to extract landmarks and run the ONNX model, then deleted.
 from __future__ import annotations
 
 import tempfile
+from time import monotonic
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from photo_stream_recognition import SnapshotSequence
 from recognize_video import recognize
 
 
 ROOT = Path(__file__).resolve().parent
 DEMO_DIR = ROOT / "review-demo"
 ALLOWED_VIDEO_SUFFIXES = {".avi", ".m4v", ".mov", ".mp4", ".webm"}
+MAX_ACTIVE_SEQUENCES = 8
+SEQUENCE_IDLE_SECONDS = 120
+sequences: dict[str, SnapshotSequence] = {}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+def discard_expired_sequences() -> None:
+    expiry = monotonic() - SEQUENCE_IDLE_SECONDS
+    for sequence_id, sequence in list(sequences.items()):
+        if sequence.updated_at < expiry:
+            sequence.close()
+            del sequences[sequence_id]
 
 
 @app.get("/")
@@ -60,6 +73,53 @@ def recognize_clip():
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+@app.post("/api/frames")
+def recognize_snapshot():
+    """Receive one ESP32 JPEG; set final=true on the final image of one sign."""
+
+    discard_expired_sequences()
+    sequence_id = request.form.get("sequence_id", "").strip()
+    snapshot = request.files.get("frame")
+    if not sequence_id or len(sequence_id) > 64:
+        return jsonify(error="Send a short sequence_id with every snapshot."), 400
+    if snapshot is None or not snapshot.filename:
+        return jsonify(error="Send one JPEG snapshot in the frame field."), 400
+    if snapshot.mimetype not in {"image/jpeg", "image/jpg"}:
+        return jsonify(error="ESP32 snapshots must use JPEG encoding."), 400
+
+    sequence = sequences.get(sequence_id)
+    if sequence is None:
+        if len(sequences) >= MAX_ACTIVE_SEQUENCES:
+            return jsonify(error="Too many active devices; retry shortly."), 429
+        sequence = SnapshotSequence()
+        sequences[sequence_id] = sequence
+
+    try:
+        detected = sequence.add_jpeg(snapshot.read())
+        is_final = request.form.get("final", "false").lower() == "true"
+        if not is_final:
+            return jsonify(
+                status="collecting",
+                frames_received=len(sequence.frames),
+                detected=detected,
+                minimum_frames=6,
+            ), 202
+
+        candidates = sequence.recognize(top_k=3)
+        return jsonify(
+            status="recognized",
+            frames_received=len(sequence.frames),
+            candidates=[{"label": label, "confidence": confidence} for label, confidence in candidates],
+        )
+    except ValueError as error:
+        return jsonify(error=str(error)), 422
+    finally:
+        if request.form.get("final", "false").lower() == "true":
+            completed_sequence = sequences.pop(sequence_id, None)
+            if completed_sequence is not None:
+                completed_sequence.close()
 
 
 @app.errorhandler(413)
