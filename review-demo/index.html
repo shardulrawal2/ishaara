@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Ishaara prototype review build: camera preview and verified on-device model package."
+    />
+    <title>Ishaara — Prototype Review</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="Ishaara home">
+          <span class="brand-mark" aria-hidden="true">ि</span>
+          <span>Ishaara</span>
+        </a>
+        <div class="review-pill"><span></span> Review build · v0.1</div>
+      </header>
+
+      <section class="intro" id="top">
+        <div>
+          <p class="eyebrow">Hands-free communication, in progress</p>
+          <h1>From a sign<br /><em>to shared understanding.</em></h1>
+          <p class="lede">
+            A transparent prototype of Ishaara’s camera-to-translation flow. The compact
+            on-device model is ready; live landmark extraction is the next connection.
+          </p>
+        </div>
+        <div class="model-chip">
+          <span class="pulse" aria-hidden="true"></span>
+          <div><strong>Model package verified</strong><small>3.74 MB · on-device ORT</small></div>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Ishaara translation prototype">
+        <article class="camera-card">
+          <div class="card-heading">
+            <div>
+              <p class="section-label">01 · Capture</p>
+              <h2>Camera preview</h2>
+            </div>
+            <span class="camera-state" id="camera-state">Camera off</span>
+          </div>
+
+          <div class="camera-stage" id="camera-stage">
+            <video id="camera" autoplay muted playsinline aria-label="Live camera preview"></video>
+            <div class="camera-placeholder" id="camera-placeholder">
+              <div class="hand-glyph" aria-hidden="true">⌁</div>
+              <strong>Ready when you are</strong>
+              <span>Start your camera to begin the review preview.</span>
+            </div>
+            <div class="frame-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="camera-overlay" id="camera-overlay" hidden>
+              <span class="record-dot"></span> LIVE PREVIEW
+            </div>
+          </div>
+
+          <div class="camera-actions">
+            <button class="primary-button" id="camera-button" type="button">Start camera</button>
+            <p id="camera-note">Your video stays in this browser preview.</p>
+          </div>
+        </article>
+
+        <article class="translation-card">
+          <div class="card-heading">
+            <div>
+              <p class="section-label">02 · Interpret</p>
+              <h2>Translation status</h2>
+            </div>
+            <span class="live-pill">ON DEVICE</span>
+          </div>
+
+          <div class="translation-surface" aria-live="polite">
+            <p class="translation-label">CURRENT OUTPUT</p>
+            <p class="translation-text" id="translation-text">Waiting for landmarks</p>
+            <p class="translation-detail" id="translation-detail">
+              The model is packaged and validated. Native hand + pose landmarks are the next step.
+            </p>
+          </div>
+
+          <div class="model-flow" id="model-flow">
+            <div class="flow-step active"><b>1</b><span>Frame source</span><small>Ready</small></div>
+            <div class="flow-line"></div>
+            <div class="flow-step"><b>2</b><span>Landmarks</span><small>Next</small></div>
+            <div class="flow-line"></div>
+            <div class="flow-step"><b>3</b><span>Model</span><small>Verified</small></div>
+          </div>
+
+          <button class="secondary-button" id="package-button" type="button">
+            Check model package
+          </button>
+        </article>
+      </section>
+
+      <section class="proof-grid" aria-label="Prototype facts">
+        <article><span>Input contract</span><strong>169 × 134</strong><small>Frames × landmark values</small></article>
+        <article><span>Output space</span><strong>263 classes</strong><small>Scoped initial checkpoint</small></article>
+        <article><span>Model format</span><strong>ORT</strong><small>Optimized for mobile bundling</small></article>
+        <article><span>Review scope</span><strong>Honest</strong><small>No fake live translations</small></article>
+      </section>
+
+      <section class="scope-note">
+        <span>What this proves today</span>
+        <p>
+          The model loads and runs locally, has been exported and compressed for an on-device app,
+          and the camera review surface is operational. Live sign recognition needs the next native
+          landmark-extraction ticket plus real signing-video validation.
+        </p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

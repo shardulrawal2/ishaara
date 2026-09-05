@@ -1,0 +1,7 @@
+# Local upstream model checkout, environment, checkpoints, and generated artifacts.
+INCLUDE/
+exported/
+__pycache__/
+
+# Local review-demo server output.
+review-demo/server*.log
