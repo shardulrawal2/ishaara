@@ -112,6 +112,8 @@ def recognize_snapshot():
                 status="collecting",
                 frames_received=len(sequence.frames),
                 detected=detected,
+                pose_frames=sequence.pose_frames,
+                signer_hand_frames=sequence.signer_hand_frames,
                 minimum_frames=MINIMUM_FRAMES,
             ), 202
 
@@ -121,11 +123,16 @@ def recognize_snapshot():
                 status="no_confident_match",
                 frames_received=len(sequence.frames),
                 confidence=candidates[0][1],
+                closest_label=candidates[0][0],
+                pose_frames=sequence.pose_frames,
+                signer_hand_frames=sequence.signer_hand_frames,
                 error="No confident match in the current model vocabulary.",
             )
         return jsonify(
             status="recognized",
             frames_received=len(sequence.frames),
+            pose_frames=sequence.pose_frames,
+            signer_hand_frames=sequence.signer_hand_frames,
             candidates=[{"label": label, "confidence": confidence} for label, confidence in candidates],
         )
     except ValueError as error:

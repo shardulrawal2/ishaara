@@ -160,8 +160,8 @@ async function analyzePhotoSequence(photos) {
 
     if (payload.status === "no_confident_match") {
       translationText.textContent = "No confident match";
-      translationDetail.textContent = "This sign is not confidently represented by the current model vocabulary.";
-      photosNote.textContent = "No result was shown because the model was uncertain—not because it recognized this as a different sign.";
+      translationDetail.textContent = `Closest tentative match: ${payload.closest_label} (${(payload.confidence * 100).toFixed(1)}%). Signer hands were detected in ${payload.signer_hand_frames} of ${payload.frames_received} photos.`;
+      photosNote.textContent = "This is diagnostic information, not a translation. It helps distinguish missing hand tracking from a model mismatch.";
       return;
     }
 

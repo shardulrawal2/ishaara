@@ -108,6 +108,8 @@ class SnapshotSequence:
     ))
     frames: list[np.ndarray] = field(default_factory=list)
     detected_frames: int = 0
+    pose_frames: int = 0
+    signer_hand_frames: int = 0
     updated_at: float = field(default_factory=monotonic)
 
     def add_jpeg(self, image_bytes: bytes) -> bool:
@@ -134,6 +136,8 @@ class SnapshotSequence:
         detected = bool(np.isfinite(frame).any())
         self.frames.append(frame)
         self.detected_frames += int(detected)
+        self.pose_frames += int(np.isfinite(pose).any())
+        self.signer_hand_frames += int(np.isfinite(first_hand).any() or np.isfinite(second_hand).any())
         self.updated_at = monotonic()
         return detected
 
