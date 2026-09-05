@@ -21,6 +21,7 @@ import re
 import shutil
 import sys
 import tempfile
+import warnings
 from collections import defaultdict
 from pathlib import Path
 
@@ -54,9 +55,13 @@ def read_manifest(captures: Path) -> list[dict[str, str]]:
                 raise ValueError("capture file must be a plain filename")
             entry["path"] = str(captures / filename)
             if not Path(entry["path"]).is_file():
-                raise FileNotFoundError(filename)
+                warnings.warn(
+                    f"Skipping missing recording listed on manifest line {line_number}: {filename}",
+                    stacklevel=1,
+                )
+                continue
             entries.append(entry)
-        except (KeyError, ValueError, FileNotFoundError, json.JSONDecodeError) as error:
+        except (KeyError, ValueError, json.JSONDecodeError) as error:
             raise ValueError(f"Invalid capture manifest entry on line {line_number}: {error}") from error
     if not entries:
         raise ValueError("The capture manifest has no usable recordings.")
