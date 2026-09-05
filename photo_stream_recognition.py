@@ -20,6 +20,7 @@ from recognize_video import FEATURE_DIM, WINDOW_SIZE, recognize_feature_tensor
 
 
 MINIMUM_FRAMES = 6
+MINIMUM_CONFIDENCE = 0.35
 
 
 def _landmarks_to_array(landmarks, count: int) -> np.ndarray:
@@ -49,6 +50,23 @@ def _swap_hands_if_needed(pose: np.ndarray, first_hand: np.ndarray, second_hand:
     if (first_detected and should_be_second) or (second_detected and not should_be_second):
         return second_hand, first_hand
     return first_hand, second_hand
+
+
+def _belongs_to_signer(hand: np.ndarray, pose: np.ndarray) -> bool:
+    """Keep only a hand plausibly attached to the single tracked upper body."""
+
+    if not np.isfinite(hand).any():
+        return False
+    shoulders = pose[[11, 12]]
+    wrists = pose[[15, 16]]
+    if not (np.isfinite(shoulders).all() and np.isfinite(wrists).all()):
+        return True
+
+    shoulder_width = float(np.linalg.norm(shoulders[0] - shoulders[1]))
+    nearest_wrist = min(float(np.linalg.norm(hand[0] - wrist)) for wrist in wrists)
+    # The wrist and hand detectors are independent; allow normal detector drift
+    # while excluding an unrelated hand elsewhere in the frame.
+    return nearest_wrist <= max(0.08, shoulder_width * 1.5)
 
 
 def prepare_feature_tensor(frames: list[np.ndarray]) -> np.ndarray:
@@ -106,6 +124,10 @@ class SnapshotSequence:
         found_hands = hand_results.multi_hand_landmarks or []
         first_hand = _landmarks_to_array(found_hands[0] if len(found_hands) > 0 else None, 21)
         second_hand = _landmarks_to_array(found_hands[1] if len(found_hands) > 1 else None, 21)
+        if not _belongs_to_signer(first_hand, pose):
+            first_hand = np.full((21, 2), np.nan, dtype=np.float32)
+        if not _belongs_to_signer(second_hand, pose):
+            second_hand = np.full((21, 2), np.nan, dtype=np.float32)
         first_hand, second_hand = _swap_hands_if_needed(pose, first_hand, second_hand)
         frame = np.concatenate((pose.reshape(-1), first_hand.reshape(-1), second_hand.reshape(-1)))
 

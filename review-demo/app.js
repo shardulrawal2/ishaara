@@ -152,6 +152,13 @@ analyzePhotosButton.addEventListener("click", async () => {
         : `Converted photo ${index + 1} of ${photos.length} to landmarks…`;
     }
 
+    if (payload.status === "no_confident_match") {
+      translationText.textContent = "No confident match";
+      translationDetail.textContent = "This sign is not confidently represented by the current model vocabulary.";
+      photosNote.textContent = "No result was shown because the model was uncertain—not because it recognized this as a different sign.";
+      return;
+    }
+
     const [topCandidate, ...otherCandidates] = payload.candidates;
     translationText.textContent = topCandidate.label;
     translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;

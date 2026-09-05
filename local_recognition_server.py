@@ -12,7 +12,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from photo_stream_recognition import SnapshotSequence
+from photo_stream_recognition import MINIMUM_CONFIDENCE, SnapshotSequence
 from recognize_video import recognize
 
 
@@ -108,6 +108,13 @@ def recognize_snapshot():
             ), 202
 
         candidates = sequence.recognize(top_k=3)
+        if candidates[0][1] < MINIMUM_CONFIDENCE:
+            return jsonify(
+                status="no_confident_match",
+                frames_received=len(sequence.frames),
+                confidence=candidates[0][1],
+                error="No confident match in the current model vocabulary.",
+            )
         return jsonify(
             status="recognized",
             frames_received=len(sequence.frames),
