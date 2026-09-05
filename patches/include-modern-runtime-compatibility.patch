@@ -16,6 +16,12 @@ index 4315fe5..14e0965 100644
 @@ -65 +69 @@ def process_video(path, save_dir):
 -        min_detection_confidence=0.5, min_tracking_confidence=0.5, upper_body_only=True
 +        min_detection_confidence=0.5, min_tracking_confidence=0.5
+@@ -97 +101 @@ def process_video(path, save_dir):
+-        if len(hand1_x) > 0 and len(hand2_x) == 0:
++        if len(hand1_x) > 0 and len(hand2_x) == 0 and len(pose_x) > 16:
+@@ -106 +110 @@ def process_video(path, save_dir):
+-        elif len(hand1_x) == 0 and len(hand2_x) > 0:
++        elif len(hand1_x) == 0 and len(hand2_x) > 0 and len(pose_x) > 16:
 diff --git a/models/transformer.py b/models/transformer.py
 index edb441f..9797316 100644
 --- a/models/transformer.py

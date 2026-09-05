@@ -8,3 +8,4 @@ review-demo/server*.log
 
 # Downloaded, licensed control clips from the official INCLUDE archive.
 data/include-control/
+data/demo-clips/

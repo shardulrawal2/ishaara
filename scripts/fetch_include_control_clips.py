@@ -29,6 +29,14 @@ CONTROL_CLIPS = (
     "Greetings/48. Hello/MVI_9914.MOV",
     "Clothes/40. Skirt/MVI_3700.MOV",
     "Clothes/40. Skirt/MVI_3997.MOV",
+    "Electronics/54. Cell phone/MVI_4539.MOV",
+    "Electronics/54. Cell phone/MVI_5391.MOV",
+    "Home/37. Book/MVI_4399.MOV",
+    "Home/37. Book/MVI_8805.MP4",
+    "Jobs/84. Teacher/MVI_5313.MOV",
+    "Jobs/84. Teacher/MVI_8866.MP4",
+    "People/60. Mother/MVI_3906.MOV",
+    "People/60. Mother/MVI_3907.MOV",
 )
 
 
@@ -100,8 +108,11 @@ def download_member(url: str, entry: tuple[int, int, int]) -> bytes:
 def main() -> None:
     record = json.loads(get_bytes(RECORD_URL))
     archives = {file["key"]: file["links"]["self"] for file in record["files"] if file["key"].endswith(".zip")}
-    remaining = set(CONTROL_CLIPS)
     DESTINATION.mkdir(parents=True, exist_ok=True)
+    remaining = {path for path in CONTROL_CLIPS if not (DESTINATION / path).is_file()}
+    if not remaining:
+        print(f"All {len(CONTROL_CLIPS)} labelled test clips are already present in {DESTINATION}")
+        return
 
     for archive_name, url in archives.items():
         category = archive_name.split("_", 1)[0]
