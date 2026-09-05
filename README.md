@@ -4,10 +4,10 @@
 
 ### From signs to shared understanding.
 
-**A low-cost, hands-free communication bridge designed for Indian Sign Language users.**
+**A low-cost, hands-free communication bridge for sign language users.**
 
 [![Status](https://img.shields.io/badge/status-prototype_in_development-f59e0b?style=for-the-badge)](#project-status)
-[![Focus](https://img.shields.io/badge/focus-Indian_Sign_Language-7c3aed?style=for-the-badge)](#why-ishaara)
+[![Focus](https://img.shields.io/badge/focus-accessible_communication-7c3aed?style=for-the-badge)](#why-ishaara)
 [![Prototype Cost](https://img.shields.io/badge/prototype_cost-₹1.2K–₹1.8K-16a34a?style=for-the-badge)](#hardware)
 
 </div>
@@ -16,7 +16,7 @@
 
 ## The communication gap
 
-India's Deaf and Hard-of-Hearing community numbers in the tens of millions, while the country has only a few hundred certified Indian Sign Language (ISL) interpreters. An interpreter-dependent solution cannot realistically be present for every conversation, classroom, clinic, shop, or emergency.
+For millions of Deaf and Hard-of-Hearing people, everyday communication still depends on whether an interpreter or sign-language-aware person is available. That support cannot realistically be present for every conversation, classroom, clinic, shop, journey, or emergency.
 
 Most technology addresses only half of the exchange: it translates signs into text or speech, but gives the Deaf user no equally natural way to receive the hearing person's reply.
 
@@ -24,7 +24,7 @@ Most technology addresses only half of the exchange: it translates signs into te
 
 It combines a clip-on camera module with a companion phone app to translate signed gestures into speech. Its longer-term architecture adds speech-to-caption translation, creating a genuinely two-way communication loop.
 
-> Ishaara does not claim to invent sign recognition. It focuses on making assistive communication affordable, wearable, hands-free, and purpose-built for ISL.
+> Ishaara does not claim to invent sign recognition—or assume that sign language is universal. It focuses on making assistive communication affordable, wearable, hands-free, and adaptable to different sign languages and communities.
 
 ## How it works
 
@@ -50,14 +50,14 @@ The wearable stays deliberately lightweight: it captures and streams video while
 |---|---|
 | **Affordable** | Target prototype hardware cost of approximately **₹1,200–₹1,800** |
 | **Hands-free** | A small module clips onto existing glasses instead of requiring a phone to be held up |
-| **ISL-first** | Designed around Indian Sign Language rather than treating ASL or BSL as interchangeable |
+| **Language-adaptable** | Built to support separately trained vocabularies instead of assuming every sign language is the same |
 | **Two-way by design** | Sign-to-speech is the MVP; speech-to-caption is the planned return path |
 | **Resilient** | Emergency phrases can work without depending on successful ML recognition |
 | **Personal** | Custom gesture training can support names, local expressions, and individual signing styles |
 
 ## MVP scope
 
-The first prototype intentionally targets a **small, well-tested vocabulary**, not unrestricted conversational ISL.
+The first prototype intentionally targets a **small, well-tested vocabulary**, not unrestricted conversational sign language.
 
 - **Sign → text → speech:** recognizes a scoped set of approximately 50–200 trained signs
 - **Fingerspelling mode:** supports words outside the trained vocabulary, letter by letter
@@ -107,7 +107,7 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 | 3 | Text-to-speech and emergency phrases | Planned |
 | 4 | Companion app and custom gesture flow | Planned |
 | 5 | Speech-to-caption return path | Roadmap |
-| 6 | Continuous ISL and group conversations | Research roadmap |
+| 6 | Continuous signing and group conversations | Research roadmap |
 
 ## 24-hour prototype plan
 
@@ -122,7 +122,7 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 
 - **Speech → captions:** display a hearing person's reply for the Deaf wearer
 - **Sound awareness:** detect alarms, doorbells, and name-calling, then provide haptic alerts
-- **Expanded ISL vocabulary:** move beyond the small MVP set as representative data becomes available
+- **Expanded vocabularies:** move beyond the small MVP set as representative data becomes available for each supported sign language
 - **Continuous signing:** progress from isolated signs toward sentence-level recognition
 - **Improved hardware:** evaluate higher-frame-rate camera platforms such as the ESP32-P4
 - **Multi-person conversations:** distinguish speakers and signers in classrooms, meetings, and groups
@@ -135,8 +135,8 @@ We believe responsible assistive technology starts with honest boundaries.
 - The ESP32-CAM is limited to roughly 10 fps at QVGA in this use case, which constrains fast and detailed signing.
 - Accuracy will vary with lighting, framing, distance, signer consistency, and the quality and representativeness of training data.
 - A 1–2 second sequence buffer is inherent to motion-based recognition, so the experience will be assistive rather than instant.
-- ISL-specific datasets are limited. Any non-ISL proxy data used during early experimentation must be disclosed and replaced through ethical, community-informed data collection.
-- A hearing collaborator, interpreter, or ISL-fluent tester must remain part of validation; technical metrics alone cannot establish usefulness.
+- Sign-language datasets are limited and uneven across languages and regions. Training data must be identified clearly and must not be presented as transferable proof for a different sign language.
+- Native signers, interpreters, and Deaf-community collaborators must remain part of validation; technical metrics alone cannot establish usefulness.
 
 ## What makes this worth building
 
@@ -152,13 +152,13 @@ We are looking for contributors and mentors across:
 - **ML / computer vision** — landmark pipelines, temporal classifiers, evaluation, and dataset strategy
 - **Mobile engineering** — streaming, on-device inference, TTS, captions, and accessibility
 - **Product design** — low-friction interactions for Deaf and hearing participants
-- **ISL and Deaf-community expertise** — language accuracy, lived-experience validation, and responsible testing
+- **Sign-language and Deaf-community expertise** — language accuracy, lived-experience validation, and responsible testing
 
 ## Contributing
 
-Ishaara is at an early stage, so focused experiments and candid feedback are especially valuable. Before opening a large pull request, start a discussion or issue describing the user need, proposed approach, and how it will be tested with ISL users.
+Ishaara is at an early stage, so focused experiments and candid feedback are especially valuable. Before opening a large pull request, start a discussion or issue describing the user need, proposed approach, target sign language, and how it will be tested with its users.
 
-Please avoid presenting ASL/BSL demonstrations as proof of ISL performance. Contributions involving signer data should include clear consent, privacy, storage, and deletion practices.
+Please do not present performance in one sign language as proof of performance in another. Contributions involving signer data should include clear consent, privacy, storage, and deletion practices.
 
 ---
 
