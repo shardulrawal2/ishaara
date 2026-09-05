@@ -118,6 +118,42 @@ The current checkpoint is a useful baseline, but it must not be treated as proof
 
 The review app can also save explicitly consented, labelled ISL recordings with non-identifying signer codes. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 
+### Test the current prototype locally
+
+Start the local review server, then open `http://127.0.0.1:4173/` in a browser:
+
+```powershell
+INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
+```
+
+For the **mobile-video backup**, press **Start camera**, allow access to the laptop webcam, then press **Record and recognize** and perform one sign in the 2.5-second recording window. The clip is processed locally and then deleted. This route uses `POST /api/mobile/recognize`.
+
+For the **ESP32-CAM path**, send ordered JPEG snapshots to `POST /api/frames`, using the same `sequence_id` on each request and `final=true` on the final snapshot. This endpoint remains available while camera firmware work continues.
+
+> [!WARNING]
+> The shipped 263-label checkpoint is a baseline validated against selected source clips, **not** an accurate recognizer for arbitrary laptop-webcam or ESP32 captures. Do not use its guesses as an Ishaara accuracy claim. It may return the wrong label even when it appears confident.
+
+### Build the first accurate scoped ISL model
+
+1. Choose an initial vocabulary of 5–10 signs with guidance from ISL users or interpreters.
+2. In the review app, enter the sign label and a non-identifying signer code, then use **Record and save**. Record around 25–50 examples of each sign per signer, with varied lighting, framing, clothing, and backgrounds.
+3. Use at least three signers for every label. One signer's recordings must remain out of training for honest evaluation.
+4. Prepare landmarks and signer-separated splits:
+
+   ```powershell
+   INCLUDE\.venv\Scripts\python.exe scripts\prepare_isl_training_data.py
+   ```
+
+5. Fine-tune the transformer and inspect its held-out-signer metrics:
+
+   ```powershell
+   INCLUDE\.venv\Scripts\python.exe scripts\train_isl_refinement.py --data-dir data\isl-training-keypoints --epochs 35
+   ```
+
+6. Promote the refined model only after reviewing its per-signer errors and testing it in the same camera setup intended for the product.
+
+The recordings, prepared dataset, and training artifacts are deliberately ignored by Git. They are local, consented training data rather than public project files.
+
 ## 24-hour prototype plan
 
 | Time | Focus |
