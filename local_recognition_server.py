@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from photo_stream_recognition import MINIMUM_CONFIDENCE, SnapshotSequence
-from recognize_video import recognize
+from recognize_video import load_labels, recognize
 
 
 ROOT = Path(__file__).resolve().parent
@@ -43,6 +43,14 @@ def serve_index():
 @app.get("/<path:asset_path>")
 def serve_asset(asset_path: str):
     return send_from_directory(DEMO_DIR, asset_path)
+
+
+@app.get("/api/vocabulary")
+def prototype_vocabulary():
+    """Expose the exact labels supported by the current checkpoint."""
+
+    labels = sorted(load_labels().values())
+    return jsonify(label_count=len(labels), labels=labels)
 
 
 @app.post("/api/recognize")

@@ -14,8 +14,14 @@ const clipNote = document.querySelector("#clip-note");
 const photosInput = document.querySelector("#photos-input");
 const analyzePhotosButton = document.querySelector("#analyze-photos-button");
 const photosNote = document.querySelector("#photos-note");
+const vocabularyButton = document.querySelector("#vocabulary-button");
+const vocabularyContent = document.querySelector("#vocabulary-content");
+const vocabularySearch = document.querySelector("#vocabulary-search");
+const vocabularyList = document.querySelector("#vocabulary-list");
+const vocabularyNote = document.querySelector("#vocabulary-note");
 
 let cameraStream;
+let vocabulary = [];
 
 function setActiveStep(index) {
   flowSteps.forEach((step, currentIndex) => step.classList.toggle("active", currentIndex <= index));
@@ -171,3 +177,44 @@ analyzePhotosButton.addEventListener("click", async () => {
     analyzePhotosButton.textContent = "Analyze photos";
   }
 });
+
+function renderVocabulary(filter = "") {
+  const query = filter.trim().toLowerCase();
+  const visibleWords = vocabulary.filter((word) => word.includes(query));
+  vocabularyList.replaceChildren(...visibleWords.map((word) => {
+    const chip = document.createElement("span");
+    chip.textContent = word;
+    return chip;
+  }));
+  vocabularyNote.textContent = query
+    ? `${visibleWords.length} matching supported word${visibleWords.length === 1 ? "" : "s"}.`
+    : `${vocabulary.length} exact labels in the current checkpoint. Test only one of these signs at a time.`;
+}
+
+vocabularyButton.addEventListener("click", async () => {
+  if (!vocabularyContent.hidden) {
+    vocabularyContent.hidden = true;
+    vocabularyButton.textContent = "Show supported prototype words";
+    return;
+  }
+
+  vocabularyContent.hidden = false;
+  vocabularyButton.textContent = "Hide supported prototype words";
+  if (vocabulary.length) return;
+
+  vocabularyButton.disabled = true;
+  vocabularyNote.textContent = "Loading the model vocabulary…";
+  try {
+    const response = await fetch("/api/vocabulary");
+    const payload = await response.json();
+    if (!response.ok) throw new Error("The model vocabulary could not be loaded.");
+    vocabulary = payload.labels;
+    renderVocabulary();
+  } catch (error) {
+    vocabularyNote.textContent = error.message;
+  } finally {
+    vocabularyButton.disabled = false;
+  }
+});
+
+vocabularySearch.addEventListener("input", () => renderVocabulary(vocabularySearch.value));
