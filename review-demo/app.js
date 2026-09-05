@@ -148,7 +148,7 @@ analyzePhotosButton.addEventListener("click", async () => {
       payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "The photo sequence could not be processed.");
       photosNote.textContent = index === photos.length - 1
-        ? "Recognition completed locally. The photos were converted to landmarks and were not retained."
+        ? "Done. The recognition result is shown above."
         : `Converted photo ${index + 1} of ${photos.length} to landmarks…`;
     }
 
