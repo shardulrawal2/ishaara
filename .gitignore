@@ -5,3 +5,6 @@ __pycache__/
 
 # Local review-demo server output.
 review-demo/server*.log
+
+# Downloaded, licensed control clips from the official INCLUDE archive.
+data/include-control/
