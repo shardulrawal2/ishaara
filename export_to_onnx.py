@@ -21,9 +21,7 @@ import onnx
 import onnxruntime as ort
 import torch
 import torch.nn as nn
-import transformers
 from numpy.core.multiarray import scalar
-from transformers.models.bert.modeling_bert import BertLayer
 
 
 ROOT = Path(__file__).resolve().parent
@@ -34,13 +32,6 @@ OUTPUT_PATH = ROOT / "exported" / "ishaara_include_transformer_small.onnx"
 WINDOW_SIZE = 169
 FEATURE_DIM = 134
 NUM_CLASSES = 263
-
-
-def install_transformers_compatibility_alias() -> None:
-    """Support INCLUDE's legacy ``transformers.BertLayer`` import expectation."""
-
-    if not hasattr(transformers, "BertLayer"):
-        transformers.BertLayer = BertLayer
 
 
 def load_checkpoint_state() -> dict[str, torch.Tensor]:
@@ -76,7 +67,6 @@ class ExportWrapper(nn.Module):
 
 
 def build_model() -> ExportWrapper:
-    install_transformers_compatibility_alias()
     sys.path.insert(0, str(INCLUDE_ROOT))
 
     from configs import TransformerConfig

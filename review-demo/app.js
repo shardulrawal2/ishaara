@@ -8,6 +8,9 @@ const cameraNote = document.querySelector("#camera-note");
 const translationText = document.querySelector("#translation-text");
 const translationDetail = document.querySelector("#translation-detail");
 const flowSteps = [...document.querySelectorAll(".flow-step")];
+const clipInput = document.querySelector("#clip-input");
+const analyzeButton = document.querySelector("#analyze-button");
+const clipNote = document.querySelector("#clip-note");
 
 let cameraStream;
 
@@ -73,4 +76,41 @@ packageButton.addEventListener("click", () => {
     packageButton.textContent = "Model package verified";
     packageButton.disabled = false;
   }, 750);
+});
+
+clipInput.addEventListener("change", () => {
+  const [clip] = clipInput.files;
+  analyzeButton.disabled = !clip;
+  clipNote.textContent = clip ? `${clip.name} selected. It will be processed locally and deleted after recognition.` : "Use one clear sign, keep hands and upper body visible, and stay under 169 frames.";
+});
+
+analyzeButton.addEventListener("click", async () => {
+  const [clip] = clipInput.files;
+  if (!clip) return;
+
+  analyzeButton.disabled = true;
+  analyzeButton.textContent = "Analyzing…";
+  translationText.textContent = "Reading landmarks";
+  translationDetail.textContent = "Extracting hands and upper-body pose, then running the local model.";
+  setActiveStep(2);
+
+  try {
+    const formData = new FormData();
+    formData.append("clip", clip);
+    const response = await fetch("/api/recognize", { method: "POST", body: formData });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Recognition could not be completed.");
+
+    const [topCandidate, ...otherCandidates] = payload.candidates;
+    translationText.textContent = topCandidate.label;
+    translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
+    clipNote.textContent = "Recognition completed locally. Treat this initial checkpoint as an experimental, scoped-vocabulary result.";
+  } catch (error) {
+    translationText.textContent = "Recognition needs a clearer clip";
+    translationDetail.textContent = error.message;
+    clipNote.textContent = "Try a short, well-lit clip with the signer’s hands and upper body fully visible.";
+  } finally {
+    analyzeButton.disabled = false;
+    analyzeButton.textContent = "Analyze video";
+  }
 });

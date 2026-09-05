@@ -1,0 +1,31 @@
+diff --git a/generate_keypoints.py b/generate_keypoints.py
+index 4315fe5..14e0965 100644
+--- a/generate_keypoints.py
++++ b/generate_keypoints.py
+@@ -38,3 +38,7 @@ def process_pose_keypoints(results):
+-    pose = results.pose_landmarks
+-    pose_x, pose_y = process_landmarks(pose)
+-    return pose_x, pose_y
++    if results.pose_landmarks is None:
++        return [], []
++
++    # Legacy MediaPipe's `upper_body_only=True` emitted these first 25 points.
++    # Current MediaPipe emits 33 points, so preserve the trained 25-point schema.
++    landmarks = results.pose_landmarks.landmark[:25]
++    return [landmark.x for landmark in landmarks], [landmark.y for landmark in landmarks]
+@@ -65 +69 @@ def process_video(path, save_dir):
+-        min_detection_confidence=0.5, min_tracking_confidence=0.5, upper_body_only=True
++        min_detection_confidence=0.5, min_tracking_confidence=0.5
+diff --git a/models/transformer.py b/models/transformer.py
+index edb441f..9797316 100644
+--- a/models/transformer.py
++++ b/models/transformer.py
+@@ -4 +4 @@ import torch.nn.functional as F
+-import transformers
++from transformers.models.bert.modeling_bert import BertLayer
+@@ -43 +43 @@ class Transformer(nn.Module):
+-                transformers.BertLayer(config.model_config)
++                BertLayer(config.model_config)
+@@ -56 +56 @@ class Transformer(nn.Module):
+-        x = F.dropout(x, p=0.2)
++        x = F.dropout(x, p=0.2, training=self.training)
