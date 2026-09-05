@@ -11,6 +11,9 @@ const flowSteps = [...document.querySelectorAll(".flow-step")];
 const clipInput = document.querySelector("#clip-input");
 const analyzeButton = document.querySelector("#analyze-button");
 const clipNote = document.querySelector("#clip-note");
+const photosInput = document.querySelector("#photos-input");
+const analyzePhotosButton = document.querySelector("#analyze-photos-button");
+const photosNote = document.querySelector("#photos-note");
 
 let cameraStream;
 
@@ -112,5 +115,52 @@ analyzeButton.addEventListener("click", async () => {
   } finally {
     analyzeButton.disabled = false;
     analyzeButton.textContent = "Analyze video";
+  }
+});
+
+photosInput.addEventListener("change", () => {
+  const photoCount = photosInput.files.length;
+  analyzePhotosButton.disabled = photoCount < 6;
+  photosNote.textContent = photoCount
+    ? `${photoCount} photos selected. Keep them in capture order; the final photo triggers recognition.`
+    : "Choose at least 6 JPEG photos, in the order a single sign is performed. This simulates the ESP32 photo stream.";
+});
+
+analyzePhotosButton.addEventListener("click", async () => {
+  const photos = [...photosInput.files];
+  if (photos.length < 6) return;
+
+  const sequenceId = `browser-${Date.now()}`;
+  analyzePhotosButton.disabled = true;
+  analyzePhotosButton.textContent = "Processing…";
+  translationText.textContent = "Reading photo sequence";
+  translationDetail.textContent = "Sending snapshots through the same path the ESP32 will use.";
+  setActiveStep(2);
+
+  try {
+    let payload;
+    for (let index = 0; index < photos.length; index += 1) {
+      const formData = new FormData();
+      formData.append("sequence_id", sequenceId);
+      formData.append("frame", photos[index]);
+      formData.append("final", String(index === photos.length - 1));
+      const response = await fetch("/api/frames", { method: "POST", body: formData });
+      payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "The photo sequence could not be processed.");
+      photosNote.textContent = index === photos.length - 1
+        ? "Recognition completed locally. The photos were converted to landmarks and were not retained."
+        : `Converted photo ${index + 1} of ${photos.length} to landmarks…`;
+    }
+
+    const [topCandidate, ...otherCandidates] = payload.candidates;
+    translationText.textContent = topCandidate.label;
+    translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
+  } catch (error) {
+    translationText.textContent = "Recognition needs clearer photos";
+    translationDetail.textContent = error.message;
+    photosNote.textContent = "Use a well-lit, ordered JPEG sequence with the signer’s hands and upper body in every photo.";
+  } finally {
+    analyzePhotosButton.disabled = photosInput.files.length < 6;
+    analyzePhotosButton.textContent = "Analyze photos";
   }
 });
