@@ -19,7 +19,7 @@ import pandas as pd
 from recognize_video import FEATURE_DIM, WINDOW_SIZE, recognize_feature_tensor
 
 
-MINIMUM_FRAMES = 6
+MINIMUM_FRAMES = 16
 MINIMUM_CONFIDENCE = 0.35
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from photo_stream_recognition import MINIMUM_CONFIDENCE, SnapshotSequence
+from photo_stream_recognition import MINIMUM_CONFIDENCE, MINIMUM_FRAMES, SnapshotSequence
 from recognize_video import load_labels, recognize
 
 
@@ -112,7 +112,7 @@ def recognize_snapshot():
                 status="collecting",
                 frames_received=len(sequence.frames),
                 detected=detected,
-                minimum_frames=6,
+                minimum_frames=MINIMUM_FRAMES,
             ), 202
 
         candidates = sequence.recognize(top_k=3)

@@ -14,6 +14,7 @@ const clipNote = document.querySelector("#clip-note");
 const photosInput = document.querySelector("#photos-input");
 const analyzePhotosButton = document.querySelector("#analyze-photos-button");
 const photosNote = document.querySelector("#photos-note");
+const captureSequenceButton = document.querySelector("#capture-sequence-button");
 const vocabularyButton = document.querySelector("#vocabulary-button");
 const vocabularyContent = document.querySelector("#vocabulary-content");
 const vocabularySearch = document.querySelector("#vocabulary-search");
@@ -126,19 +127,18 @@ analyzeButton.addEventListener("click", async () => {
 
 photosInput.addEventListener("change", () => {
   const photoCount = photosInput.files.length;
-  analyzePhotosButton.disabled = photoCount < 6;
+  analyzePhotosButton.disabled = photoCount < 16;
   photosNote.textContent = photoCount
     ? `${photoCount} photos selected. Keep them in capture order; the final photo triggers recognition.`
-    : "Choose at least 6 JPEG photos, in the order a single sign is performed. This simulates the ESP32 photo stream.";
+    : "Choose at least 16 JPEG photos, in the order a single sign is performed, or start the camera and capture an ordered sequence automatically.";
 });
 
-analyzePhotosButton.addEventListener("click", async () => {
-  const photos = [...photosInput.files];
-  if (photos.length < 6) return;
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
 
+async function analyzePhotoSequence(photos) {
   const sequenceId = `browser-${Date.now()}`;
-  analyzePhotosButton.disabled = true;
-  analyzePhotosButton.textContent = "Processing…";
   translationText.textContent = "Reading photo sequence";
   translationDetail.textContent = "Sending snapshots through the same path the ESP32 will use.";
   setActiveStep(2);
@@ -173,8 +173,51 @@ analyzePhotosButton.addEventListener("click", async () => {
     translationDetail.textContent = error.message;
     photosNote.textContent = "Use a well-lit, ordered JPEG sequence with the signer’s hands and upper body in every photo.";
   } finally {
-    analyzePhotosButton.disabled = photosInput.files.length < 6;
+    analyzePhotosButton.disabled = photosInput.files.length < 16;
     analyzePhotosButton.textContent = "Analyze photos";
+  }
+}
+
+analyzePhotosButton.addEventListener("click", async () => {
+  const photos = [...photosInput.files];
+  if (photos.length < 16) return;
+
+  analyzePhotosButton.disabled = true;
+  analyzePhotosButton.textContent = "Processing…";
+  await analyzePhotoSequence(photos);
+});
+
+captureSequenceButton.addEventListener("click", async () => {
+  if (!cameraStream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    photosNote.textContent = "Start the camera first, then click this again while performing one supported sign.";
+    return;
+  }
+
+  captureSequenceButton.disabled = true;
+  captureSequenceButton.textContent = "Capturing…";
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  const photos = [];
+  try {
+    for (let index = 0; index < 20; index += 1) {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const photo = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+      if (!photo) throw new Error("The camera snapshot could not be created.");
+      photos.push(new File([photo], `snapshot-${index + 1}.jpg`, { type: "image/jpeg" }));
+      photosNote.textContent = `Captured photo ${index + 1} of 20… keep signing.`;
+      await wait(100);
+    }
+    captureSequenceButton.textContent = "Analyzing…";
+    await analyzePhotoSequence(photos);
+  } catch (error) {
+    translationText.textContent = "Photo capture failed";
+    translationDetail.textContent = error.message;
+    photosNote.textContent = "Start the camera, allow camera access, and keep the signer in frame.";
+  } finally {
+    captureSequenceButton.disabled = false;
+    captureSequenceButton.textContent = "Capture a 2-second photo sequence";
   }
 });
 
