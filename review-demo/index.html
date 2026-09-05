@@ -25,8 +25,8 @@
           <p class="eyebrow">Hands-free communication, in progress</p>
           <h1>From a sign<br /><em>to shared understanding.</em></h1>
           <p class="lede">
-            A transparent prototype of Ishaara’s camera-to-translation flow. The compact
-            on-device model is ready; live landmark extraction is the next connection.
+            A transparent prototype of Ishaara’s camera-to-translation flow. Use the phone
+            camera as the working backup while the ESP32-CAM continues to send photo sequences.
           </p>
         </div>
         <div class="model-chip">
@@ -92,6 +92,13 @@
           <button class="secondary-button" id="package-button" type="button">
             Check model package
           </button>
+          <div class="mobile-backup">
+            <span class="backup-badge">MOBILE BACKUP</span>
+            <h3>Recognize a sign from this phone</h3>
+            <p>Records a short clip from the live camera and uses the model’s native video path. The recording is deleted after recognition.</p>
+            <button class="capture-button" id="mobile-recognize-button" type="button">Record and recognize (2.5 seconds)</button>
+            <p id="mobile-note">Start the camera, frame your hands and upper body, then perform one sign.</p>
+          </div>
           <div class="clip-uploader">
             <label class="clip-label" for="clip-input">Try a short signing clip</label>
             <div class="clip-controls">
@@ -101,13 +108,24 @@
             <p id="clip-note">Use one clear sign, keep hands and upper body visible, and stay under 169 frames.</p>
           </div>
           <div class="photo-uploader">
-            <label class="clip-label" for="photos-input">Try a sequence of photos</label>
+            <label class="clip-label" for="photos-input">ESP32 photo-sequence path</label>
             <div class="clip-controls">
               <input id="photos-input" type="file" accept="image/jpeg" multiple />
               <button class="upload-button" id="analyze-photos-button" type="button" disabled>Analyze photos</button>
             </div>
             <button class="capture-button" id="capture-sequence-button" type="button">Capture a 2-second photo sequence</button>
             <p id="photos-note">Choose at least 16 JPEG photos, in the order a single sign is performed, or start the camera and capture an ordered sequence automatically.</p>
+          </div>
+          <div class="training-capture">
+            <span class="backup-badge">DATA COLLECTION</span>
+            <h3>Save a labelled ISL training example</h3>
+            <p>Use only recordings you have consent to use. These stay on this computer so we can train and evaluate a refined ISL model.</p>
+            <div class="clip-controls">
+              <input id="training-label" type="text" maxlength="49" placeholder="Sign label, e.g. namaste" />
+              <input id="training-signer" type="text" maxlength="32" placeholder="Signer code, e.g. signer-01" />
+              <button class="upload-button" id="save-training-button" type="button">Record and save</button>
+            </div>
+            <p id="training-note">Collect multiple people, backgrounds, distances, and lighting conditions for every label.</p>
           </div>
           <div class="vocabulary-panel">
             <button class="secondary-button" id="vocabulary-button" type="button">Show supported prototype words</button>
@@ -124,15 +142,15 @@
         <article><span>Input contract</span><strong>169 × 134</strong><small>Frames × landmark values</small></article>
         <article><span>Output space</span><strong>263 classes</strong><small>Scoped initial checkpoint</small></article>
         <article><span>Model format</span><strong>ORT</strong><small>Optimized for mobile bundling</small></article>
-        <article><span>Review scope</span><strong>Honest</strong><small>No fake live translations</small></article>
+        <article><span>Capture modes</span><strong>2 paths</strong><small>Mobile video + ESP32 JPEGs</small></article>
       </section>
 
       <section class="scope-note">
         <span>What this proves today</span>
         <p>
-          The model loads and runs locally, has been exported and compressed for an on-device app,
-          and the camera review surface is operational. Live sign recognition needs the next native
-          landmark-extraction ticket plus real signing-video validation.
+          The current video-trained checkpoint is a baseline, not an accuracy claim for new signers.
+          Mobile video is the immediate backup. The ESP32 endpoint remains active, and labelled,
+          consented ISL captures are the path to a properly evaluated refined model.
         </p>
       </section>
     </main>

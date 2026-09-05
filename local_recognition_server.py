@@ -7,6 +7,10 @@ file just long enough to extract landmarks and run the ONNX model, then deleted.
 from __future__ import annotations
 
 import tempfile
+import json
+import re
+import uuid
+from datetime import datetime, timezone
 from time import monotonic
 from pathlib import Path
 
@@ -18,6 +22,7 @@ from recognize_video import load_labels, recognize
 
 ROOT = Path(__file__).resolve().parent
 DEMO_DIR = ROOT / "review-demo"
+FIELD_CAPTURE_DIR = ROOT / "data" / "isl-field-captures"
 ALLOWED_VIDEO_SUFFIXES = {".avi", ".m4v", ".mov", ".mp4", ".webm"}
 MAX_ACTIVE_SEQUENCES = 8
 SEQUENCE_IDLE_SECONDS = 120
@@ -25,6 +30,42 @@ sequences: dict[str, SnapshotSequence] = {}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+def classify_clip(clip) -> tuple[list[tuple[str, float]], Path | None]:
+    """Run a temporary mobile or uploaded video through the native video path."""
+
+    suffix = Path(clip.filename).suffix.lower()
+    if suffix not in ALLOWED_VIDEO_SUFFIXES:
+        raise ValueError("Use an MP4, MOV, WebM, M4V, or AVI video.")
+
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="ishaara-upload-", suffix=suffix, delete=False) as file:
+            temporary_path = Path(file.name)
+            clip.save(file)
+        return recognize(temporary_path, top_k=3), temporary_path
+    except Exception:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def recognition_response(candidates: list[tuple[str, float]]):
+    """Avoid presenting an arbitrary low-probability class as a translation."""
+
+    top_label, confidence = candidates[0]
+    if confidence < MINIMUM_CONFIDENCE:
+        return jsonify(
+            status="no_confident_match",
+            confidence=confidence,
+            closest_label=top_label,
+            error="No confident match in the current model vocabulary.",
+        )
+    return jsonify(
+        status="recognized",
+        candidates=[{"label": label, "confidence": confidence} for label, confidence in candidates],
+    )
 
 
 def discard_expired_sequences() -> None:
@@ -59,20 +100,10 @@ def recognize_clip():
     if clip is None or not clip.filename:
         return jsonify(error="Choose a short signing video first."), 400
 
-    suffix = Path(clip.filename).suffix.lower()
-    if suffix not in ALLOWED_VIDEO_SUFFIXES:
-        return jsonify(error="Use an MP4, MOV, WebM, M4V, or AVI video."), 400
-
     temporary_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(prefix="ishaara-upload-", suffix=suffix, delete=False) as file:
-            temporary_path = Path(file.name)
-            clip.save(file)
-
-        candidates = recognize(temporary_path, top_k=3)
-        return jsonify(
-            candidates=[{"label": label, "confidence": confidence} for label, confidence in candidates]
-        )
+        candidates, temporary_path = classify_clip(clip)
+        return recognition_response(candidates)
     except ValueError as error:
         return jsonify(error=str(error)), 422
     except Exception:
@@ -81,6 +112,64 @@ def recognize_clip():
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+@app.post("/api/mobile/recognize")
+def recognize_mobile_clip():
+    """Mobile-camera backup: record locally, then use the model's video-native path."""
+
+    clip = request.files.get("clip")
+    if clip is None or not clip.filename:
+        return jsonify(error="Record a short sign with the mobile camera first."), 400
+
+    temporary_path: Path | None = None
+    try:
+        candidates, temporary_path = classify_clip(clip)
+        return recognition_response(candidates)
+    except ValueError as error:
+        return jsonify(error=str(error)), 422
+    except Exception:
+        app.logger.exception("Mobile recognition failed")
+        return jsonify(error="The mobile recording could not be processed. Keep one signer, both hands, and upper body visible."), 500
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+@app.post("/api/training/captures")
+def save_training_capture():
+    """Store an explicitly labelled mobile recording for the ISL refinement dataset."""
+
+    label = request.form.get("label", "").strip().lower()
+    signer = request.form.get("signer", "").strip().lower()
+    clip = request.files.get("clip")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9 -]{0,48}", label):
+        return jsonify(error="Enter a short label using letters, numbers, spaces, or hyphens."), 400
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", signer):
+        return jsonify(error="Enter a non-identifying signer code, such as signer-01."), 400
+    if clip is None or not clip.filename:
+        return jsonify(error="Record a labelled sign before saving it."), 400
+    suffix = Path(clip.filename).suffix.lower()
+    if suffix not in ALLOWED_VIDEO_SUFFIXES:
+        return jsonify(error="Save an MP4, MOV, WebM, M4V, or AVI recording."), 400
+
+    FIELD_CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+    capture_id = uuid.uuid4().hex
+    safe_label = re.sub(r"[^a-z0-9]+", "-", label).strip("-")
+    filename = f"{safe_label}-{capture_id}{suffix}"
+    target = FIELD_CAPTURE_DIR / filename
+    clip.save(target)
+    manifest_entry = {
+        "id": capture_id,
+        "label": label,
+        "signer": signer,
+        "file": filename,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "source": "mobile-camera",
+    }
+    with (FIELD_CAPTURE_DIR / "manifest.jsonl").open("a", encoding="utf-8") as manifest:
+        manifest.write(json.dumps(manifest_entry) + "\n")
+    return jsonify(status="saved", id=capture_id, label=label)
 
 
 @app.post("/api/frames")

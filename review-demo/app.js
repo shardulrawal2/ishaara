@@ -15,6 +15,12 @@ const photosInput = document.querySelector("#photos-input");
 const analyzePhotosButton = document.querySelector("#analyze-photos-button");
 const photosNote = document.querySelector("#photos-note");
 const captureSequenceButton = document.querySelector("#capture-sequence-button");
+const mobileRecognizeButton = document.querySelector("#mobile-recognize-button");
+const mobileNote = document.querySelector("#mobile-note");
+const trainingLabel = document.querySelector("#training-label");
+const trainingSigner = document.querySelector("#training-signer");
+const saveTrainingButton = document.querySelector("#save-training-button");
+const trainingNote = document.querySelector("#training-note");
 const vocabularyButton = document.querySelector("#vocabulary-button");
 const vocabularyContent = document.querySelector("#vocabulary-content");
 const vocabularySearch = document.querySelector("#vocabulary-search");
@@ -23,6 +29,19 @@ const vocabularyNote = document.querySelector("#vocabulary-note");
 
 let cameraStream;
 let vocabulary = [];
+
+function showRecognitionResult(payload, note) {
+  if (payload.status === "no_confident_match") {
+    translationText.textContent = "No confident match";
+    translationDetail.textContent = `Closest tentative match: ${payload.closest_label} (${(payload.confidence * 100).toFixed(1)}%).`;
+    if (note) note.textContent = "No translation was shown because the model was not confident enough.";
+    return false;
+  }
+  const [topCandidate, ...otherCandidates] = payload.candidates;
+  translationText.textContent = topCandidate.label;
+  translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
+  return true;
+}
 
 function setActiveStep(index) {
   flowSteps.forEach((step, currentIndex) => step.classList.toggle("active", currentIndex <= index));
@@ -54,7 +73,10 @@ cameraButton.addEventListener("click", async () => {
   cameraButton.disabled = true;
   cameraButton.textContent = "Connecting…";
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } },
+      audio: false,
+    });
     video.srcObject = cameraStream;
     video.hidden = false;
     placeholder.hidden = true;
@@ -62,7 +84,7 @@ cameraButton.addEventListener("click", async () => {
     cameraState.textContent = "Preview live";
     cameraState.classList.add("on");
     cameraButton.textContent = "Stop camera";
-    cameraNote.textContent = "Camera is live locally. No video is uploaded by this preview.";
+    cameraNote.textContent = "Mobile backup is ready. Recognition records only a short clip, then deletes it after processing.";
     translationText.textContent = "Camera connected";
     translationDetail.textContent = "Live video is ready. The next native milestone turns each frame into the 134 landmark values required by the model.";
     setActiveStep(1);
@@ -111,10 +133,8 @@ analyzeButton.addEventListener("click", async () => {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Recognition could not be completed.");
 
-    const [topCandidate, ...otherCandidates] = payload.candidates;
-    translationText.textContent = topCandidate.label;
-    translationDetail.textContent = `${(topCandidate.confidence * 100).toFixed(1)}% confidence. Other candidates: ${otherCandidates.map((candidate) => `${candidate.label} (${(candidate.confidence * 100).toFixed(1)}%)`).join(", ")}.`;
-    clipNote.textContent = "Recognition completed locally. Treat this initial checkpoint as an experimental, scoped-vocabulary result.";
+    showRecognitionResult(payload, clipNote);
+    if (payload.status !== "no_confident_match") clipNote.textContent = "Recognition completed locally. Treat this initial checkpoint as an experimental, scoped-vocabulary result.";
   } catch (error) {
     translationText.textContent = "Recognition needs a clearer clip";
     translationDetail.textContent = error.message;
@@ -135,6 +155,31 @@ photosInput.addEventListener("change", () => {
 
 function wait(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function recordCameraClip(durationMs = 2500) {
+  if (!cameraStream || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    throw new Error("Start the mobile camera first, then keep your hands and upper body in view.");
+  }
+  if (!window.MediaRecorder) throw new Error("This browser cannot record a mobile camera clip.");
+
+  const supportedType = ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+  const recorder = supportedType ? new MediaRecorder(cameraStream, { mimeType: supportedType }) : new MediaRecorder(cameraStream);
+  const chunks = [];
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size) chunks.push(event.data);
+  });
+  const stopped = new Promise((resolve, reject) => {
+    recorder.addEventListener("stop", resolve, { once: true });
+    recorder.addEventListener("error", () => reject(new Error("The camera recording failed.")), { once: true });
+  });
+  recorder.start(250);
+  await wait(durationMs);
+  recorder.stop();
+  await stopped;
+  const type = recorder.mimeType || "video/webm";
+  const extension = type.includes("mp4") ? "mp4" : "webm";
+  return new File([new Blob(chunks, { type })], `mobile-sign.${extension}`, { type });
 }
 
 async function analyzePhotoSequence(photos) {
@@ -185,6 +230,60 @@ analyzePhotosButton.addEventListener("click", async () => {
   analyzePhotosButton.disabled = true;
   analyzePhotosButton.textContent = "Processing…";
   await analyzePhotoSequence(photos);
+});
+
+mobileRecognizeButton.addEventListener("click", async () => {
+  mobileRecognizeButton.disabled = true;
+  mobileRecognizeButton.textContent = "Recording… perform one sign";
+  try {
+    const clip = await recordCameraClip();
+    mobileRecognizeButton.textContent = "Recognizing…";
+    translationText.textContent = "Reading mobile video";
+    translationDetail.textContent = "Extracting hand and upper-body landmarks from the short recording.";
+    setActiveStep(2);
+    const formData = new FormData();
+    formData.append("clip", clip);
+    const response = await fetch("/api/mobile/recognize", { method: "POST", body: formData });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The mobile recording could not be recognized.");
+    showRecognitionResult(payload, mobileNote);
+    if (payload.status !== "no_confident_match") mobileNote.textContent = "Mobile backup recognition completed locally; the short recording was deleted.";
+  } catch (error) {
+    translationText.textContent = "Mobile recognition needs a clearer sign";
+    translationDetail.textContent = error.message;
+    mobileNote.textContent = "Keep one signer’s hands and upper body in frame, then try again.";
+  } finally {
+    mobileRecognizeButton.disabled = false;
+    mobileRecognizeButton.textContent = "Record and recognize (2.5 seconds)";
+  }
+});
+
+saveTrainingButton.addEventListener("click", async () => {
+  const label = trainingLabel.value.trim();
+  const signer = trainingSigner.value.trim();
+  if (!label || !signer) {
+    trainingNote.textContent = "Enter the sign label and a non-identifying signer code before recording.";
+    return;
+  }
+  saveTrainingButton.disabled = true;
+  saveTrainingButton.textContent = "Recording…";
+  try {
+    const clip = await recordCameraClip();
+    saveTrainingButton.textContent = "Saving…";
+    const formData = new FormData();
+    formData.append("label", label);
+    formData.append("signer", signer);
+    formData.append("clip", clip);
+    const response = await fetch("/api/training/captures", { method: "POST", body: formData });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The labelled capture could not be saved.");
+    trainingNote.textContent = `Saved “${payload.label}”. Record this sign again with different framing, lighting, and signers.`;
+  } catch (error) {
+    trainingNote.textContent = error.message;
+  } finally {
+    saveTrainingButton.disabled = false;
+    saveTrainingButton.textContent = "Record and save";
+  }
 });
 
 captureSequenceButton.addEventListener("click", async () => {

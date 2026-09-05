@@ -68,7 +68,7 @@ The first prototype intentionally targets a **small, well-tested vocabulary**, n
 
 ## Software pipeline
 
-1. **Capture** — the ESP32-CAM captures JPEG frames and streams them to the phone over Wi-Fi.
+1. **Capture** — the ESP32-CAM captures JPEG frames and streams them to the phone over Wi-Fi. During development, the phone camera can also record the same short signing clip directly as a backup capture source.
 2. **Pose extraction** — MediaPipe Holistic converts pixels into hand, face, and body landmarks.
 3. **Sequence buffering** — the app collects roughly 1–2 seconds of landmarks because a sign is a movement, not a single pose.
 4. **Classification** — an LSTM or transformer-based model predicts a trained sign and confidence score.
@@ -108,6 +108,15 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 | 4 | Companion app and custom gesture flow | Planned |
 | 5 | Speech-to-caption return path | Roadmap |
 | 6 | Continuous signing and group conversations | Research roadmap |
+
+### Current ML refinement path
+
+The current checkpoint is a useful baseline, but it must not be treated as proof of accuracy for a new signer or a new capture device. Ishaara therefore keeps two capture routes active:
+
+- **Mobile-video backup:** records a short clip and sends it through the model's video-native landmark pipeline. The clip is deleted immediately after recognition.
+- **ESP32 JPEG route:** accepts ordered snapshots at `/api/frames`; this remains the hardware integration route and is not removed while ESP32-CAM work continues.
+
+The review app can also save explicitly consented, labelled ISL recordings with non-identifying signer codes. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 
 ## 24-hour prototype plan
 
