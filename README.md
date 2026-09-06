@@ -129,6 +129,7 @@ The current checkpoint is a useful baseline, but it must not be treated as proof
 
 - **Mobile-video backup:** records a short clip and sends it through the model's video-native landmark pipeline. The clip is deleted immediately after recognition.
 - **ESP32 JPEG route:** accepts ordered snapshots at `/api/frames`; this remains the hardware integration route and is not removed while ESP32-CAM work continues.
+- **ESP32 direct-buffer route:** accepts raw JPEG buffers at `/api/frames/raw` and relays finalized results to a paired phone. See [`docs/ESP32_CAM_CONNECTION.md`](docs/ESP32_CAM_CONNECTION.md).
 
 The backend can also save explicitly consented, labelled ISL recordings through `POST /api/training/captures` for full model refinement. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 

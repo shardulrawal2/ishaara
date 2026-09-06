@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from time import monotonic
 from pathlib import Path
+from threading import Lock
 from urllib.parse import urlparse
 
 import numpy as np
@@ -37,8 +38,11 @@ DEMO_DIR = ROOT / "review-demo"
 FIELD_CAPTURE_DIR = ROOT / "data" / "isl-field-captures"
 ALLOWED_VIDEO_SUFFIXES = {".avi", ".m4v", ".mov", ".mp4", ".webm"}
 MAX_ACTIVE_SEQUENCES = 8
+MAX_PAIRED_DEVICES = 128
 SEQUENCE_IDLE_SECONDS = 120
 sequences: dict[str, SnapshotSequence] = {}
+device_results: dict[str, dict] = {}
+landmark_extraction_lock = Lock()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -97,7 +101,8 @@ def classify_clip(clip, recognizer) -> tuple[list[tuple[str, float]], Path | Non
 
     temporary_path = save_temporary_clip(clip)
     try:
-        return recognizer(temporary_path, top_k=3), temporary_path
+        with landmark_extraction_lock:
+            return recognizer(temporary_path, top_k=3), temporary_path
     except Exception:
         temporary_path.unlink(missing_ok=True)
         raise
@@ -183,7 +188,12 @@ def active_model_status():
 def health_check():
     """Small readiness response for the web app and review diagnostics."""
 
-    return jsonify(status="ready", model_labels=len(refined_labels()), esp32_endpoint="/api/frames")
+    return jsonify(
+        status="ready",
+        model_labels=len(refined_labels()),
+        esp32_endpoint="/api/frames",
+        esp32_raw_endpoint="/api/frames/raw",
+    )
 
 
 @app.post("/api/recognize")
@@ -217,7 +227,8 @@ def recognize_mobile_clip():
     temporary_path: Path | None = None
     try:
         temporary_path = save_temporary_clip(clip)
-        feature_tensor = extract_feature_tensor(temporary_path)
+        with landmark_extraction_lock:
+            feature_tensor = extract_feature_tensor(temporary_path)
         templates = personal_templates_from_request()
         if templates:
             personal_match = match_personal_sign(build_embedding(feature_tensor), templates)
@@ -250,7 +261,8 @@ def create_personal_sign_embedding():
     temporary_path: Path | None = None
     try:
         temporary_path = save_temporary_clip(clip)
-        embedding = build_embedding(extract_feature_tensor(temporary_path))
+        with landmark_extraction_lock:
+            embedding = build_embedding(extract_feature_tensor(temporary_path))
         return jsonify(
             status="embedded",
             embedding=np.round(embedding, 4).tolist(),
@@ -302,18 +314,26 @@ def save_training_capture():
     return jsonify(status="saved", id=capture_id, label=label)
 
 
-@app.post("/api/frames")
-def recognize_snapshot():
-    """Receive one ESP32 JPEG; set final=true on the final image of one sign."""
+def store_device_result(device_id: str, payload: dict) -> dict:
+    """Keep the newest finalized hardware result long enough for its phone to poll."""
 
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", device_id):
+        return payload
+    if device_id not in device_results and len(device_results) >= MAX_PAIRED_DEVICES:
+        device_results.pop(next(iter(device_results)))
+    result = {**payload, "event_id": uuid.uuid4().hex, "device_id": device_id}
+    device_results[device_id] = result
+    return result
+
+
+def process_snapshot(sequence_id: str, image_bytes: bytes, mimetype: str, is_final: bool, device_id: str = ""):
+    """Add one JPEG to an ESP32 sequence and optionally finalize inference."""
     discard_expired_sequences()
-    sequence_id = request.form.get("sequence_id", "").strip()
-    snapshot = request.files.get("frame")
     if not sequence_id or len(sequence_id) > 64:
         return jsonify(error="Send a short sequence_id with every snapshot."), 400
-    if snapshot is None or not snapshot.filename:
+    if not image_bytes:
         return jsonify(error="Send one JPEG snapshot in the frame field."), 400
-    if snapshot.mimetype not in {"image/jpeg", "image/jpg"}:
+    if mimetype not in {"image/jpeg", "image/jpg"}:
         return jsonify(error="ESP32 snapshots must use JPEG encoding."), 400
 
     sequence = sequences.get(sequence_id)
@@ -324,8 +344,8 @@ def recognize_snapshot():
         sequences[sequence_id] = sequence
 
     try:
-        detected = sequence.add_jpeg(snapshot.read())
-        is_final = request.form.get("final", "false").lower() == "true"
+        with landmark_extraction_lock:
+            detected = sequence.add_jpeg(image_bytes)
         if not is_final:
             return jsonify(
                 status="collecting",
@@ -338,7 +358,7 @@ def recognize_snapshot():
 
         candidates = sequence.recognize(top_k=3)
         if candidates[0][1] < MINIMUM_CONFIDENCE:
-            return jsonify(
+            payload = store_device_result(device_id, dict(
                 status="no_confident_match",
                 frames_received=len(sequence.frames),
                 confidence=candidates[0][1],
@@ -346,21 +366,62 @@ def recognize_snapshot():
                 pose_frames=sequence.pose_frames,
                 signer_hand_frames=sequence.signer_hand_frames,
                 error="No confident match in the current model vocabulary.",
-            )
-        return jsonify(
+            ))
+            return jsonify(**payload)
+        payload = store_device_result(device_id, dict(
             status="recognized",
             frames_received=len(sequence.frames),
             pose_frames=sequence.pose_frames,
             signer_hand_frames=sequence.signer_hand_frames,
             candidates=[{"label": label, "confidence": confidence} for label, confidence in candidates],
-        )
+        ))
+        return jsonify(**payload)
     except ValueError as error:
         return jsonify(error=str(error)), 422
     finally:
-        if request.form.get("final", "false").lower() == "true":
+        if is_final:
             completed_sequence = sequences.pop(sequence_id, None)
             if completed_sequence is not None:
                 completed_sequence.close()
+
+
+@app.post("/api/frames")
+def recognize_snapshot():
+    """Receive one multipart ESP32 JPEG; final=true closes the sign sequence."""
+
+    snapshot = request.files.get("frame")
+    return process_snapshot(
+        request.form.get("sequence_id", "").strip(),
+        snapshot.read() if snapshot is not None else b"",
+        snapshot.mimetype if snapshot is not None else "",
+        request.form.get("final", "false").lower() == "true",
+        request.form.get("device_id", "").strip(),
+    )
+
+
+@app.post("/api/frames/raw")
+def recognize_raw_snapshot():
+    """Receive an ESP32 frame buffer directly without multipart RAM overhead."""
+
+    return process_snapshot(
+        request.args.get("sequence_id", "").strip(),
+        request.get_data(cache=False),
+        request.mimetype,
+        request.args.get("final", "false").lower() == "true",
+        request.args.get("device_id", "").strip(),
+    )
+
+
+@app.get("/api/devices/<device_id>/latest")
+def latest_device_result(device_id: str):
+    """Return the newest finalized ESP32 result to the paired phone app."""
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", device_id):
+        return jsonify(error="Use a device ID containing letters, numbers, underscores, or hyphens."), 400
+    result = device_results.get(device_id)
+    if result is None:
+        return jsonify(status="waiting", device_id=device_id), 404
+    return jsonify(**result)
 
 
 @app.errorhandler(413)

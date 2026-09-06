@@ -32,6 +32,14 @@ const wordList = $("#word-list");
 const vocabularyCount = $("#vocabulary-count");
 const vocabularySearch = $("#vocabulary-search");
 const voiceSelect = $("#voice-select");
+const languageSelect = $("#language-select");
+const sentenceMode = $("#sentence-mode");
+const sentenceIntent = $("#sentence-intent");
+const sentenceTokensElement = $("#sentence-tokens");
+const sentenceOutput = $("#sentence-output");
+const espDeviceIdInput = $("#esp-device-id");
+const espConnectButton = $("#connect-esp");
+const espStatus = $("#esp-status");
 const trainingDialog = $("#training-dialog");
 const trainingLabel = $("#training-label");
 const trainingButton = $("#record-training");
@@ -40,6 +48,7 @@ const toast = $("#toast");
 
 let cameraStream = null;
 let currentResult = "";
+let currentSpeechText = "";
 let modelLabels = [];
 let modelReady = false;
 let modelLoadPromise = null;
@@ -48,6 +57,27 @@ let speechPrimed = false;
 let activeFacingMode = "user";
 let enrollmentName = "";
 let enrollmentExamples = [];
+let sentenceTokens = [];
+let espPollTimer = null;
+let lastEspEventId = "";
+
+const SPEECH_COPY = {
+  "en-IN": {
+    hello: "Hello",
+    thankyou: "Thank you",
+    emergency: ["I am Deaf. I need help communicating.", "Please call emergency services.", "I need a sign language interpreter.", "Please write down what you are saying."],
+  },
+  "hi-IN": {
+    hello: "नमस्ते",
+    thankyou: "धन्यवाद",
+    emergency: ["मैं बधिर हूँ। मुझे बातचीत करने में मदद चाहिए।", "कृपया आपातकालीन सेवाओं को बुलाइए।", "मुझे सांकेतिक भाषा के दुभाषिए की आवश्यकता है।", "कृपया अपनी बात लिखकर बताइए।"],
+  },
+  "ta-IN": {
+    hello: "வணக்கம்",
+    thankyou: "நன்றி",
+    emergency: ["நான் செவித்திறன் குறைபாடு உடையவர். தொடர்புகொள்ள எனக்கு உதவி தேவை.", "தயவுசெய்து அவசர சேவைகளை அழைக்கவும்.", "எனக்கு சைகை மொழி மொழிபெயர்ப்பாளர் தேவை.", "தயவுசெய்து நீங்கள் சொல்வதை எழுதுங்கள்."],
+  },
+};
 
 function loadPersonalSigns() {
   try {
@@ -72,20 +102,28 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2600);
 }
 
-async function fetchApi(path, options = {}) {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 120000);
-  try {
-    return await fetch(apiUrl(path), { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error.name === "AbortError") throw new Error("The recognition service took too long to respond. Wake the Render service and try again.");
-    if (!API_BASE && window.location.hostname.endsWith(".vercel.app")) {
-      throw new Error("The recognition service is not connected. Add ISHAARA_API_BASE in Vercel and redeploy.");
+async function fetchApi(path, options = {}, networkRetries = 0) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= networkRetries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
+    try {
+      return await fetch(apiUrl(path), { ...options, signal: controller.signal });
+    } catch (error) {
+      lastError = error;
+      if (attempt < networkRetries) {
+        await wait(2500 * (attempt + 1));
+        continue;
+      }
+    } finally {
+      window.clearTimeout(timeout);
     }
-    throw new Error("Cannot reach the recognition service. Check that Render is running and allows this Vercel address.");
-  } finally {
-    window.clearTimeout(timeout);
   }
+  if (lastError?.name === "AbortError") throw new Error("The recognition service took too long to respond. It may be restarting on Render; wait a moment and retry.");
+  if (!API_BASE && window.location.hostname.endsWith(".vercel.app")) {
+    throw new Error("The recognition service is not connected. Add ISHAARA_API_BASE in Vercel and redeploy.");
+  }
+  throw new Error("The recognition service restarted or could not be reached. Your saved examples are still on this phone; wait 20 seconds and retry this recording.");
 }
 
 function setRoute(route) {
@@ -107,6 +145,15 @@ function updateRecognitionState(title, detail, confidence = 0, accepted = false)
   confidenceFill.style.width = `${Math.max(0, Math.min(1, confidence)) * 100}%`;
 }
 
+function speechLanguage() {
+  return languageSelect.value || "en-IN";
+}
+
+function translatedSign(label) {
+  const normalized = label.toLowerCase().replaceAll(" ", "");
+  return SPEECH_COPY[speechLanguage()]?.[normalized] || formatLabel(label);
+}
+
 function speak(text) {
   if (!("speechSynthesis" in window) || !text) {
     showToast("Speech output is not available in this browser.");
@@ -117,7 +164,7 @@ function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
   const selectedVoice = window.speechSynthesis.getVoices().find((voice) => voice.name === voiceSelect.value);
   if (selectedVoice) utterance.voice = selectedVoice;
-  utterance.lang = "en-IN";
+  utterance.lang = speechLanguage();
   utterance.rate = 1.06;
   window.speechSynthesis.speak(utterance);
 }
@@ -133,7 +180,8 @@ function primeSpeechEngine() {
 function loadVoices() {
   if (!("speechSynthesis" in window)) return;
   const previous = voiceSelect.value;
-  const voices = window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  const languagePrefix = speechLanguage().split("-")[0].toLowerCase();
+  const voices = window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
   voiceSelect.innerHTML = '<option value="">System default</option>';
   voices.forEach((voice) => {
     const option = document.createElement("option");
@@ -142,6 +190,92 @@ function loadVoices() {
     voiceSelect.append(option);
   });
   if (voices.some((voice) => voice.name === previous)) voiceSelect.value = previous;
+}
+
+function renderSentenceTokens() {
+  sentenceTokensElement.replaceChildren();
+  if (!sentenceTokens.length) {
+    const empty = document.createElement("small");
+    empty.textContent = "Recognized signs will appear here.";
+    sentenceTokensElement.append(empty);
+    return;
+  }
+  sentenceTokens.forEach((token) => {
+    const chip = document.createElement("span");
+    chip.textContent = translatedSign(token);
+    sentenceTokensElement.append(chip);
+  });
+}
+
+function buildConnectedSentence() {
+  if (!sentenceTokens.length) return "";
+  const language = speechLanguage();
+  const concepts = sentenceTokens.map(translatedSign);
+  const intent = sentenceIntent.value;
+  if (language === "hi-IN") {
+    const joined = concepts.join(" और ");
+    if (intent === "need") return `मुझे ${joined} चाहिए।`;
+    if (intent === "want") return `मैं ${joined} चाहता/चाहती हूँ।`;
+    if (intent === "greeting") return `नमस्ते, ${joined}।`;
+    return `${joined}।`;
+  }
+  if (language === "ta-IN") {
+    const joined = concepts.join(" மற்றும் ");
+    if (intent === "need") return `எனக்கு ${joined} தேவை.`;
+    if (intent === "want") return `எனக்கு ${joined} வேண்டும்.`;
+    if (intent === "greeting") return `வணக்கம், ${joined}.`;
+    return `${joined}.`;
+  }
+  const joined = concepts.join(" and ");
+  if (intent === "need") return `I need ${joined}.`;
+  if (intent === "want") return `I want ${joined}.`;
+  if (intent === "greeting") return `Hello, ${joined}.`;
+  return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
+}
+
+function refreshLanguageContent() {
+  loadVoices();
+  renderSentenceTokens();
+  if (sentenceTokens.length) sentenceOutput.textContent = buildConnectedSentence();
+  const phrases = SPEECH_COPY[speechLanguage()].emergency;
+  $$("#emergency-list button").forEach((button, index) => { button.textContent = phrases[index]; });
+  window.localStorage.setItem("ishaara-language", speechLanguage());
+}
+
+async function pollEspResult() {
+  const deviceId = espDeviceIdInput.value.trim();
+  if (!deviceId) return;
+  try {
+    const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/latest`, { cache: "no-store" });
+    if (response.status === 404) {
+      espStatus.textContent = "Connected and waiting for the ESP32-CAM to finish a sign.";
+      return;
+    }
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Could not read the ESP32 result.");
+    espStatus.textContent = "ESP32-CAM connected. Waiting for the next completed sign.";
+    if (payload.event_id && payload.event_id !== lastEspEventId) {
+      lastEspEventId = payload.event_id;
+      presentRecognition(payload);
+      setRoute("home");
+    }
+  } catch (error) {
+    espStatus.textContent = error.message;
+  }
+}
+
+function connectEspCamera() {
+  const deviceId = espDeviceIdInput.value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(deviceId)) {
+    espStatus.textContent = "Enter the same short device ID used in the firmware, for example ishaara-01.";
+    return;
+  }
+  window.localStorage.setItem("ishaara-esp-device-id", deviceId);
+  window.clearInterval(espPollTimer);
+  espConnectButton.textContent = "ESP32 connected";
+  espStatus.textContent = "Connecting to the hardware result channel…";
+  pollEspResult();
+  espPollTimer = window.setInterval(pollEspResult, 1500);
 }
 
 async function loadModel({ retries = 3 } = {}) {
@@ -291,7 +425,7 @@ async function sendRecognitionClip(blob, filename = "ishaara-camera.webm") {
   const form = new FormData();
   form.append("clip", blob, filename);
   form.append("personal_signs", JSON.stringify(personalSigns));
-  const response = await fetchApi("/api/mobile/recognize", { method: "POST", body: form });
+  const response = await fetchApi("/api/mobile/recognize", { method: "POST", body: form }, 1);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Recognition failed.");
   return payload;
@@ -307,12 +441,18 @@ function presentRecognition(payload) {
   }
   const winner = payload.candidates[0];
   currentResult = formatLabel(winner.label);
+  currentSpeechText = translatedSign(winner.label);
   speakResultButton.disabled = false;
   const detail = payload.source === "personal" ? "Matched your personal gesture. Speaking now." : "Gesture recognized. Speaking now.";
   updateRecognitionState(currentResult, detail, winner.confidence, true);
   conversationSign.textContent = currentResult;
+  if (sentenceMode.checked) {
+    sentenceTokens.push(winner.label);
+    renderSentenceTokens();
+    sentenceOutput.textContent = buildConnectedSentence();
+  }
   actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
-  speak(currentResult);
+  speak(currentSpeechText);
 }
 
 async function recognizeFromLiveCamera() {
@@ -383,7 +523,7 @@ async function savePersonalSignExample() {
     const form = new FormData();
     form.append("clip", clip, "personal-sign-example.webm");
     trainingButton.textContent = "Reading landmarks…";
-    const response = await fetchApi("/api/personal-signs/embedding", { method: "POST", body: form });
+    const response = await fetchApi("/api/personal-signs/embedding", { method: "POST", body: form }, 2);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not learn that example.");
     enrollmentExamples.push(payload.embedding);
@@ -452,6 +592,7 @@ cameraSelect.addEventListener("change", async () => {
   if (!cameraStream) return;
   try { await startCamera(); } catch (error) { showToast(error.message); }
 });
+espConnectButton.addEventListener("click", connectEspCamera);
 modelPill.addEventListener("click", () => loadModel({ retries: 3 }));
 window.addEventListener("online", () => loadModel({ retries: 3 }));
 recognizeButton.addEventListener("click", recognizeFromLiveCamera);
@@ -460,8 +601,27 @@ mobileCaptureInput.addEventListener("change", () => {
   const [file] = mobileCaptureInput.files;
   if (file) recognizeUploadedClip(file);
 });
-speakResultButton.addEventListener("click", () => speak(currentResult));
+speakResultButton.addEventListener("click", () => speak(currentSpeechText || currentResult));
 voiceSelect.addEventListener("change", () => window.localStorage.setItem("ishaara-voice", voiceSelect.value));
+languageSelect.addEventListener("change", refreshLanguageContent);
+sentenceIntent.addEventListener("change", () => {
+  if (sentenceTokens.length) sentenceOutput.textContent = buildConnectedSentence();
+});
+$("#clear-sentence").addEventListener("click", () => {
+  sentenceTokens = [];
+  renderSentenceTokens();
+  sentenceOutput.textContent = "Build a sentence after recognizing two or more key signs.";
+});
+$("#build-sentence").addEventListener("click", () => {
+  const sentence = buildConnectedSentence();
+  if (!sentence) {
+    showToast("Recognize at least one sign first.");
+    return;
+  }
+  sentenceOutput.textContent = sentence;
+  appendConversationMessage(sentence);
+  speak(sentence);
+});
 $("#conversation-recognize").addEventListener("click", () => setRoute("home"));
 $("#message-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -498,14 +658,19 @@ $$('[data-theme-choice]').forEach((button) => button.addEventListener("click", (
 }));
 
 document.addEventListener("pointerdown", primeSpeechEngine, { once: true });
-window.addEventListener("beforeunload", stopCamera);
+window.addEventListener("beforeunload", () => {
+  stopCamera();
+  window.clearInterval(espPollTimer);
+});
 if ("speechSynthesis" in window) window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
 
 const storedTheme = window.localStorage.getItem("ishaara-theme") || "light";
 document.body.dataset.theme = storedTheme;
+languageSelect.value = window.localStorage.getItem("ishaara-language") || "en-IN";
+espDeviceIdInput.value = window.localStorage.getItem("ishaara-esp-device-id") || "";
 $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice.dataset.themeChoice === storedTheme));
 if (window.localStorage.getItem("ishaara-onboarded") === "true") onboarding.classList.add("is-hidden");
-loadVoices();
+refreshLanguageContent();
 window.setTimeout(() => {
   loadVoices();
   const storedVoice = window.localStorage.getItem("ishaara-voice");
