@@ -89,6 +89,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 
 .camera-panel { position: relative; height: 264px; overflow: hidden; border-radius: 26px; background: #242733; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
 .camera-panel video { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.camera-panel.is-rear video { transform: none; }
 .camera-panel:not(.is-on) video { visibility: hidden; }
 .camera-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 45px; color: #aaaebb; text-align: center; }
 .camera-panel.is-on .camera-empty { display: none; }
@@ -104,6 +105,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .guide-frame i:nth-child(3) { bottom: 45px; left: 22px; border-width: 0 0 2px 2px; border-radius: 0 0 0 7px; }
 .guide-frame i:nth-child(4) { right: 22px; bottom: 45px; border-width: 0 2px 2px 0; border-radius: 0 0 7px; }
 .camera-toggle { position: absolute; right: 14px; bottom: 12px; padding: 7px 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; color: white; background: rgba(21,23,31,.62); cursor: pointer; font-size: 9px; backdrop-filter: blur(12px); }
+.camera-facing-toggle { position: absolute; left: 14px; bottom: 12px; padding: 7px 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; color: white; background: rgba(21,23,31,.62); cursor: pointer; font-size: 9px; backdrop-filter: blur(12px); }
 .countdown { position: absolute; inset: 0; display: grid; place-items: center; color: white; background: rgba(30,29,40,.58); font-family: Georgia, serif; font-size: 84px; font-weight: 700; backdrop-filter: blur(3px); }
 .countdown[hidden] { display: none; }
 

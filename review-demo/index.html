@@ -49,6 +49,7 @@
               <div class="camera-topline"><span class="live-dot"></span><b id="camera-status">Camera off</b><span id="fps-label">local</span></div>
               <div class="guide-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
               <div class="countdown" id="countdown" hidden>3</div>
+              <button class="camera-facing-toggle" id="camera-facing-toggle" type="button">Use rear camera</button>
               <button class="camera-toggle" id="camera-toggle" type="button">Start camera</button>
             </div>
             <div class="recognition-card" aria-live="polite">
@@ -56,7 +57,7 @@
               <div class="recognized-row"><div><p class="recognized-word" id="recognized-word">Ready</p><p class="recognized-detail" id="recognized-detail">Perform a supported or personal gesture when the camera is ready.</p></div><button class="round-action" id="speak-result" type="button" aria-label="Replay recognized result" disabled>◖))</button></div>
               <div class="confidence-track"><span id="confidence-fill"></span></div>
             </div>
-            <div class="primary-actions"><button class="button button-primary" id="recognize-now" type="button">Recognize one sign</button><button class="button button-soft mobile-capture-label" id="mobile-capture-button" type="button">Use phone camera</button><input id="mobile-capture-input" type="file" accept="video/*" capture="user" hidden /></div>
+            <div class="primary-actions"><button class="button button-primary" id="recognize-now" type="button">Recognize one sign</button><button class="button button-soft mobile-capture-label" id="mobile-capture-button" type="button">Choose camera/video</button><input id="mobile-capture-input" type="file" accept="video/*" hidden /></div>
             <p class="action-note" id="action-note">A 3-second countdown is followed by a 2.5-second recording.</p>
             <div class="feature-grid">
               <button class="feature-card" data-route="vocabulary" type="button"><span class="feature-icon lavender">Aa</span><b>Vocabulary</b><small>See trained signs</small><em>›</em></button>

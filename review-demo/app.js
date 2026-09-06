@@ -11,6 +11,7 @@ const cameraPanel = $("#camera-panel");
 const cameraPreview = $("#camera-preview");
 const cameraStatus = $("#camera-status");
 const cameraToggle = $("#camera-toggle");
+const cameraFacingToggle = $("#camera-facing-toggle");
 const cameraSelect = $("#camera-select");
 const countdown = $("#countdown");
 const recognizeButton = $("#recognize-now");
@@ -42,6 +43,7 @@ let currentResult = "";
 let modelLabels = [];
 let toastTimer = null;
 let speechPrimed = false;
+let activeFacingMode = "user";
 let enrollmentName = "";
 let enrollmentExamples = [];
 
@@ -66,6 +68,22 @@ function showToast(message) {
   toast.classList.add("is-visible");
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2600);
+}
+
+async function fetchApi(path, options = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 120000);
+  try {
+    return await fetch(apiUrl(path), { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("The recognition service took too long to respond. Wake the Render service and try again.");
+    if (!API_BASE && window.location.hostname.endsWith(".vercel.app")) {
+      throw new Error("The recognition service is not connected. Add ISHAARA_API_BASE in Vercel and redeploy.");
+    }
+    throw new Error("Cannot reach the recognition service. Check that Render is running and allows this Vercel address.");
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function setRoute(route) {
@@ -126,7 +144,7 @@ function loadVoices() {
 
 async function loadModel() {
   try {
-    const response = await fetch(apiUrl("/api/model"), { cache: "no-store" });
+    const response = await fetchApi("/api/model", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Model unavailable");
     modelLabels = payload.labels;
@@ -196,13 +214,15 @@ async function startCamera() {
   const deviceId = cameraSelect.value;
   cameraStream = await navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } } : { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
+    video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 720 }, height: { ideal: 720 } } : { facingMode: { ideal: activeFacingMode }, width: { ideal: 720 }, height: { ideal: 720 } },
   });
   cameraPreview.srcObject = cameraStream;
   await cameraPreview.play();
   cameraPanel.classList.add("is-on");
+  cameraPanel.classList.toggle("is-rear", activeFacingMode === "environment");
   cameraStatus.textContent = "Camera live";
   cameraToggle.textContent = "Stop camera";
+  cameraFacingToggle.textContent = activeFacingMode === "user" ? "Use rear camera" : "Use selfie camera";
   await refreshCameraChoices();
   return cameraStream;
 }
@@ -247,7 +267,7 @@ async function sendRecognitionClip(blob, filename = "ishaara-camera.webm") {
   const form = new FormData();
   form.append("clip", blob, filename);
   form.append("personal_signs", JSON.stringify(personalSigns));
-  const response = await fetch(apiUrl("/api/mobile/recognize"), { method: "POST", body: form });
+  const response = await fetchApi("/api/mobile/recognize", { method: "POST", body: form });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Recognition failed.");
   return payload;
@@ -337,7 +357,7 @@ async function savePersonalSignExample() {
     const form = new FormData();
     form.append("clip", clip, "personal-sign-example.webm");
     trainingButton.textContent = "Reading landmarks…";
-    const response = await fetch(apiUrl("/api/personal-signs/embedding"), { method: "POST", body: form });
+    const response = await fetchApi("/api/personal-signs/embedding", { method: "POST", body: form });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not learn that example.");
     enrollmentExamples.push(payload.embedding);
@@ -392,6 +412,15 @@ $("#show-welcome").addEventListener("click", () => onboarding.classList.remove("
 cameraToggle.addEventListener("click", async () => {
   if (cameraStream) { stopCamera(); return; }
   try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
+});
+cameraFacingToggle.addEventListener("click", async () => {
+  activeFacingMode = activeFacingMode === "user" ? "environment" : "user";
+  cameraSelect.value = "";
+  cameraFacingToggle.textContent = activeFacingMode === "user" ? "Use rear camera" : "Use selfie camera";
+  if (!cameraStream) return;
+  cameraFacingToggle.disabled = true;
+  try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
+  finally { cameraFacingToggle.disabled = false; }
 });
 cameraSelect.addEventListener("change", async () => {
   if (!cameraStream) return;

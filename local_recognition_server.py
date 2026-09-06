@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from time import monotonic
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 from flask import Flask, jsonify, request, send_from_directory
@@ -55,15 +56,27 @@ def configured_origins() -> set[str]:
 ALLOWED_ORIGINS = configured_origins()
 
 
+def origin_is_allowed(origin: str) -> bool:
+    """Accept configured origins plus HTTPS Vercel production/preview domains."""
+
+    normalized = origin.rstrip("/")
+    if normalized in ALLOWED_ORIGINS:
+        return True
+    parsed = urlparse(normalized)
+    return parsed.scheme == "https" and bool(parsed.hostname) and parsed.hostname.endswith(".vercel.app")
+
+
 @app.after_request
 def disable_development_cache(response):
     """Keep app metadata fresh and authorize the configured frontend origin."""
 
     response.headers["Cache-Control"] = "no-store"
     origin = request.headers.get("Origin", "").rstrip("/")
-    if origin in ALLOWED_ORIGINS:
+    if origin_is_allowed(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
 
