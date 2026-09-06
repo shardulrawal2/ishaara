@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "installCommand": "echo Skipping backend dependencies for the static frontend",
   "buildCommand": "node scripts/build_frontend_config.mjs",
   "outputDirectory": "review-demo",
   "cleanUrls": true
