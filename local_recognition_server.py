@@ -42,6 +42,7 @@ MAX_PAIRED_DEVICES = 128
 SEQUENCE_IDLE_SECONDS = 120
 sequences: dict[str, SnapshotSequence] = {}
 device_results: dict[str, dict] = {}
+device_last_seen: dict[str, float] = {}
 landmark_extraction_lock = Lock()
 
 app = Flask(__name__)
@@ -335,6 +336,8 @@ def process_snapshot(sequence_id: str, image_bytes: bytes, mimetype: str, is_fin
         return jsonify(error="Send one JPEG snapshot in the frame field."), 400
     if mimetype not in {"image/jpeg", "image/jpg"}:
         return jsonify(error="ESP32 snapshots must use JPEG encoding."), 400
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", device_id):
+        device_last_seen[device_id] = monotonic()
 
     sequence = sequences.get(sequence_id)
     if sequence is None:
@@ -420,8 +423,10 @@ def latest_device_result(device_id: str):
         return jsonify(error="Use a device ID containing letters, numbers, underscores, or hyphens."), 400
     result = device_results.get(device_id)
     if result is None:
-        return jsonify(status="waiting", device_id=device_id), 404
-    return jsonify(**result)
+        online = monotonic() - device_last_seen.get(device_id, 0) < 15
+        return jsonify(status="online" if online else "waiting", online=online, device_id=device_id), 200 if online else 404
+    online = monotonic() - device_last_seen.get(device_id, 0) < 15
+    return jsonify(**result, online=online)
 
 
 @app.errorhandler(413)

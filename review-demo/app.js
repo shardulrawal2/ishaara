@@ -248,12 +248,19 @@ async function pollEspResult() {
   try {
     const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/latest`, { cache: "no-store" });
     if (response.status === 404) {
-      espStatus.textContent = "Connected and waiting for the ESP32-CAM to finish a sign.";
+      espConnectButton.textContent = "Waiting for ESP32 frames";
+      espStatus.textContent = "Paired in the app, but this physical ESP32 has not contacted Render yet.";
       return;
     }
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not read the ESP32 result.");
-    espStatus.textContent = "ESP32-CAM connected. Waiting for the next completed sign.";
+    if (!payload.online) {
+      espConnectButton.textContent = "ESP32 offline";
+      espStatus.textContent = "The ESP32 sent an earlier result but has not sent a frame in the last 15 seconds.";
+      return;
+    }
+    espConnectButton.textContent = "ESP32 online";
+    espStatus.textContent = payload.event_id ? "ESP32-CAM is sending frames through Render." : "ESP32-CAM is online; waiting for a completed sign.";
     if (payload.event_id && payload.event_id !== lastEspEventId) {
       lastEspEventId = payload.event_id;
       presentRecognition(payload);
@@ -272,8 +279,8 @@ function connectEspCamera() {
   }
   window.localStorage.setItem("ishaara-esp-device-id", deviceId);
   window.clearInterval(espPollTimer);
-  espConnectButton.textContent = "ESP32 connected";
-  espStatus.textContent = "Connecting to the hardware result channel…";
+  espConnectButton.textContent = "Checking for ESP32…";
+  espStatus.textContent = "Pairing does not start the camera; checking whether its firmware is sending frames…";
   pollEspResult();
   espPollTimer = window.setInterval(pollEspResult, 1500);
 }
