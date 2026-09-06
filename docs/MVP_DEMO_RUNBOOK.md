@@ -32,13 +32,15 @@ Open `http://127.0.0.1:4173/` and refresh the page with `Ctrl + F5`.
 
 ## Perform the demo
 
-1. Press **Get Started**, then press **Start camera** and allow camera access.
+1. Press **Start camera** and allow camera access.
 2. Position one signer with both hands and the upper body visible.
 3. Press **Recognize one sign**.
 4. Wait through the visible 3–2–1 countdown.
 5. Perform one complete `hello` or `thankyou` sign while the button says **Recording now**.
 6. Wait for landmark extraction and inference.
 7. Read the accepted label and confidence, or explain that the confidence gate rejected an uncertain sample.
+
+Accepted results are spoken automatically by the phone's preloaded native text-to-speech engine. Automatic speech can be disabled under **Settings**; the speaker button always replays the latest accepted result.
 
 The bottom navigation also demonstrates the Figma product structure: two-way conversation, model-backed vocabulary, emergency speech phrases, and camera/model settings. These application features do not expand the two-word recognition claim.
 
@@ -66,7 +68,7 @@ The ESP32 endpoint remains in the repository but is outside this MVP demonstrati
 ## Fast recovery
 
 - Camera unavailable: close other applications using the webcam, refresh, and allow permission again.
-- Model unavailable: confirm `artifacts\hello-thankyou-v1\ishaara_isl_refinement.pth` exists.
+- Model unavailable: confirm `artifacts\hello-thankyou-v1\ishaara_isl_refinement.quant.onnx` and `metrics.json` exist.
 - No hands detected: improve lighting, move closer, and keep the hands in the frame for the complete sign.
 - Incorrect result: return to neutral, wait one second, repeat the sign once during the recording window.
 - Stale interface: the server disables development caching; if necessary, press `Ctrl + F5` after restarting it.

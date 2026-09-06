@@ -9,31 +9,7 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-
-    <section class="onboarding" id="onboarding" aria-label="Welcome to Ishaara">
-      <div class="onboarding-card">
-        <div class="hero-mark" aria-hidden="true"><span></span><span></span></div>
-        <p class="wordmark">ISHAARA</p>
-        <h1>Har Ishaara,<br />Ek Awaaz</h1>
-        <p>Every gesture, a voice.</p>
-        <div class="onboarding-rule"></div>
-        <button class="button button-primary" id="get-started" type="button">Get Started</button>
-        <button class="text-button" id="skip-onboarding" type="button">Use the camera-only app</button>
-        <small>Your communication companion</small>
-      </div>
-    </section>
-
     <div class="product-stage" id="product-stage">
-      <aside class="desktop-context" aria-label="Ishaara product summary">
-        <div class="desktop-brand"><div class="mini-mark" aria-hidden="true"><i></i><i></i></div><span>ISHAARA</span></div>
-        <p class="desktop-kicker">Camera-first sign recognition</p>
-        <h2>Make every gesture<br />part of the conversation.</h2>
-        <p class="desktop-copy">The app follows your mobile design and runs the validated local landmark model. Today’s honest vocabulary is <strong>hello</strong> and <strong>thankyou</strong>.</p>
-        <div class="desktop-proof"><div><strong>85.7%</strong><span>held-out signer accuracy</span></div><div><strong>75%</strong><span>confidence gate</span></div></div>
-        <p class="privacy-line"><span></span> Recognition clips are deleted after inference.</p>
-      </aside>
-
       <div class="phone-shell">
         <header class="app-header">
           <button class="brand-button" id="brand-home" type="button" aria-label="Go to home"><span class="mini-mark" aria-hidden="true"><i></i><i></i></span><span>ISHAARA</span></button>
@@ -83,9 +59,8 @@
           <section class="app-view" data-view="settings" aria-labelledby="settings-title">
             <div class="screen-heading screen-heading-compact"><div><p class="eyebrow">PERSONALIZE</p><h2 id="settings-title">Settings</h2></div></div>
             <div class="settings-group"><p>CAMERA &amp; MODEL</p><label class="setting-row"><span><b>Camera</b><small>Choose after granting permission</small></span><select id="camera-select"><option value="">Default camera</option></select></label><div class="setting-row"><span><b>Recognition model</b><small id="settings-model-detail">Checking local package</small></span><span class="status-orb"></span></div></div>
-            <div class="settings-group"><p>AUDIO &amp; LANGUAGE</p><label class="setting-row"><span><b>Output voice</b><small>Browser speech synthesis</small></span><select id="voice-select"><option value="">System default</option></select></label><div class="setting-row"><span><b>Output language</b><small>English</small></span><strong>English ›</strong></div></div>
+            <div class="settings-group"><p>AUDIO &amp; LANGUAGE</p><label class="setting-row"><span><b>Speak results automatically</b><small>Uses fast on-device text-to-speech</small></span><input class="switch" id="auto-speak" type="checkbox" checked /></label><label class="setting-row"><span><b>Output voice</b><small>Preloaded browser speech engine</small></span><select id="voice-select"><option value="">System default</option></select></label><div class="setting-row"><span><b>Output language</b><small>English</small></span><strong>English ›</strong></div></div>
             <div class="settings-group"><p>APPEARANCE</p><div class="segmented" role="group" aria-label="Theme"><button class="is-selected" data-theme-choice="light" type="button">Light</button><button data-theme-choice="dark" type="button">Dark</button></div></div>
-            <button class="button button-soft full-width" id="show-welcome" type="button">Show welcome screen</button>
           </section>
 
           <section class="app-view" data-view="emergency" aria-labelledby="emergency-title">

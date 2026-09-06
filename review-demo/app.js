@@ -2,7 +2,6 @@ const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
-const onboarding = $("#onboarding");
 const cameraPanel = $("#camera-panel");
 const cameraPreview = $("#camera-preview");
 const cameraStatus = $("#camera-status");
@@ -27,6 +26,7 @@ const wordList = $("#word-list");
 const vocabularyCount = $("#vocabulary-count");
 const vocabularySearch = $("#vocabulary-search");
 const voiceSelect = $("#voice-select");
+const autoSpeakToggle = $("#auto-speak");
 const trainingDialog = $("#training-dialog");
 const trainingLabel = $("#training-label");
 const trainingSigner = $("#training-signer");
@@ -38,6 +38,7 @@ let cameraStream = null;
 let currentResult = "";
 let modelLabels = [];
 let toastTimer = null;
+let speechPrimed = false;
 
 function formatLabel(label) {
   if (label === "thankyou") return "Thank you";
@@ -57,11 +58,6 @@ function setRoute(route) {
   $(".app-main").scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function dismissOnboarding() {
-  onboarding.classList.add("is-hidden");
-  window.localStorage.setItem("ishaara-onboarded", "true");
-}
-
 function updateRecognitionState(title, detail, confidence = 0, accepted = false) {
   recognizedWord.textContent = title;
   recognizedDetail.textContent = detail;
@@ -76,11 +72,21 @@ function speak(text) {
     return;
   }
   window.speechSynthesis.cancel();
+  window.speechSynthesis.resume();
   const utterance = new SpeechSynthesisUtterance(text);
   const selectedVoice = window.speechSynthesis.getVoices().find((voice) => voice.name === voiceSelect.value);
   if (selectedVoice) utterance.voice = selectedVoice;
   utterance.lang = "en-IN";
+  utterance.rate = 1.06;
   window.speechSynthesis.speak(utterance);
+}
+
+function primeSpeechEngine() {
+  if (speechPrimed || !("speechSynthesis" in window)) return;
+  const warmup = new SpeechSynthesisUtterance(" ");
+  warmup.volume = 0;
+  window.speechSynthesis.speak(warmup);
+  speechPrimed = true;
 }
 
 function loadVoices() {
@@ -235,6 +241,7 @@ function presentRecognition(payload) {
   updateRecognitionState(currentResult, "Accepted by the scoped local model. Tap the speaker to say it aloud.", winner.confidence, true);
   conversationSign.textContent = currentResult;
   actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
+  if (autoSpeakToggle.checked) speak(currentResult);
 }
 
 async function recognizeFromLiveCamera() {
@@ -323,9 +330,6 @@ function appendConversationMessage(text) {
 
 $$('[data-route]').forEach((button) => button.addEventListener("click", () => setRoute(button.dataset.route)));
 $("#brand-home").addEventListener("click", () => setRoute("home"));
-$("#get-started").addEventListener("click", dismissOnboarding);
-$("#skip-onboarding").addEventListener("click", dismissOnboarding);
-$("#show-welcome").addEventListener("click", () => onboarding.classList.remove("is-hidden"));
 cameraToggle.addEventListener("click", async () => {
   if (cameraStream) { stopCamera(); return; }
   try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
@@ -341,6 +345,11 @@ mobileCaptureInput.addEventListener("change", () => {
   if (file) recognizeUploadedClip(file);
 });
 speakResultButton.addEventListener("click", () => speak(currentResult));
+autoSpeakToggle.addEventListener("change", () => {
+  window.localStorage.setItem("ishaara-auto-speak", String(autoSpeakToggle.checked));
+  showToast(autoSpeakToggle.checked ? "Automatic speech enabled." : "Automatic speech disabled.");
+});
+voiceSelect.addEventListener("change", () => window.localStorage.setItem("ishaara-voice", voiceSelect.value));
 $("#conversation-recognize").addEventListener("click", () => setRoute("home"));
 $("#message-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -368,12 +377,18 @@ $$('[data-theme-choice]').forEach((button) => button.addEventListener("click", (
   $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice === button));
 }));
 
+document.addEventListener("pointerdown", primeSpeechEngine, { once: true });
 window.addEventListener("beforeunload", stopCamera);
 if ("speechSynthesis" in window) window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
 
 const storedTheme = window.localStorage.getItem("ishaara-theme") || "light";
 document.body.dataset.theme = storedTheme;
 $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice.dataset.themeChoice === storedTheme));
-if (window.localStorage.getItem("ishaara-onboarded") === "true") onboarding.classList.add("is-hidden");
+autoSpeakToggle.checked = window.localStorage.getItem("ishaara-auto-speak") !== "false";
 loadVoices();
+window.setTimeout(() => {
+  loadVoices();
+  const storedVoice = window.localStorage.getItem("ishaara-voice");
+  if (storedVoice && [...voiceSelect.options].some((option) => option.value === storedVoice)) voiceSelect.value = storedVoice;
+}, 250);
 loadModel();

@@ -51,10 +51,17 @@ Also test original videos from the held-out signer through the complete video-to
 
 ## Run the approved candidate
 
-Point the server at the candidate without deleting the current two-word model:
+Export the approved checkpoint to a small deployment model:
 
 ```powershell
-$env:ISHAARA_REFINED_MODEL="artifacts\ishaara-v3\ishaara_isl_refinement.pth"
+.\INCLUDE\.venv\Scripts\python.exe scripts\export_refined_onnx.py --checkpoint artifacts\ishaara-v3\ishaara_isl_refinement.pth --output artifacts\ishaara-v3\ishaara_isl_refinement.quant.onnx
+```
+
+Keep `metrics.json` beside the exported model, then point the server at the candidate without deleting the current two-word model:
+
+```powershell
+$env:ISHAARA_REFINED_MODEL="artifacts\ishaara-v3\ishaara_isl_refinement.quant.onnx"
+$env:ISHAARA_REFINED_METADATA="artifacts\ishaara-v3\metrics.json"
 .\INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
 ```
 

@@ -24,7 +24,6 @@ from recognize_refined import (
     model_metrics as refined_model_metrics,
     recognize as recognize_refined,
 )
-from recognize_video import recognize
 
 
 ROOT = Path(__file__).resolve().parent
@@ -47,7 +46,7 @@ def disable_development_cache(response):
     return response
 
 
-def classify_clip(clip, recognizer=recognize) -> tuple[list[tuple[str, float]], Path | None]:
+def classify_clip(clip, recognizer) -> tuple[list[tuple[str, float]], Path | None]:
     """Run a temporary mobile or uploaded video through the native video path."""
 
     suffix = Path(clip.filename).suffix.lower()
@@ -271,6 +270,7 @@ def file_too_large(_error):
 
 
 if __name__ == "__main__":
-    host = os.environ.get("ISHAARA_HOST", "127.0.0.1")
-    port = int(os.environ.get("ISHAARA_PORT", "4173"))
+    deployment_port = os.environ.get("PORT")
+    host = os.environ.get("ISHAARA_HOST", "0.0.0.0" if deployment_port else "127.0.0.1")
+    port = int(os.environ.get("ISHAARA_PORT", deployment_port or "4173"))
     app.run(host=host, port=port, debug=False)

@@ -111,6 +111,8 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 
 > **Current working app:** the Figma-aligned camera MVP is intentionally limited to the team-trained `hello` and `thankyou` model. It includes sign-to-text, speech output, two-way conversation, model-backed vocabulary, emergency phrases, settings, and controlled training capture. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope and [`docs/ADDING_WORDS.md`](docs/ADDING_WORDS.md) for the exact expansion process.
 
+The deployable interface is phone-only. Accepted translations are spoken immediately using the mobile device's native Web Speech engine, avoiding a second server round trip. Deployment instructions are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ### Current ML refinement path
 
 The current checkpoint is a useful baseline, but it must not be treated as proof of accuracy for a new signer or a new capture device. Ishaara therefore keeps two capture routes active:
@@ -118,7 +120,7 @@ The current checkpoint is a useful baseline, but it must not be treated as proof
 - **Mobile-video backup:** records a short clip and sends it through the model's video-native landmark pipeline. The clip is deleted immediately after recognition.
 - **ESP32 JPEG route:** accepts ordered snapshots at `/api/frames`; this remains the hardware integration route and is not removed while ESP32-CAM work continues.
 
-The review app can also save explicitly consented, labelled ISL recordings with non-identifying signer codes. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
+The phone app can also save explicitly consented, labelled ISL recordings with non-identifying signer codes. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 
 ### Test the current prototype locally
 
@@ -147,7 +149,7 @@ For the **ESP32-CAM path**, send ordered JPEG snapshots to `POST /api/frames`, u
 ### Build the first accurate scoped ISL model
 
 1. Choose an initial vocabulary of 5–10 signs with guidance from ISL users or interpreters.
-2. In the review app, enter the sign label and a non-identifying signer code, then use **Record and save**. Record around 25–50 examples of each sign per signer, with varied lighting, framing, clothing, and backgrounds.
+2. Under **Vocabulary → Collect samples**, enter the sign label and a non-identifying signer code, then use **Record and save**. Record around 25–50 examples of each sign per signer, with varied lighting, framing, clothing, and backgrounds.
 3. Use at least three signers for every label. One signer's recordings must remain out of training for honest evaluation.
 4. Prepare landmarks and signer-separated splits:
 

@@ -16,11 +16,12 @@ import mediapipe as mp
 import numpy as np
 import pandas as pd
 
-from recognize_video import FEATURE_DIM, WINDOW_SIZE, recognize_feature_tensor
+from ishaara_runtime import FEATURE_DIM, WINDOW_SIZE
+from recognize_refined import recognize_feature_tensor
 
 
 MINIMUM_FRAMES = 16
-MINIMUM_CONFIDENCE = 0.35
+MINIMUM_CONFIDENCE = 0.75
 
 
 def _landmarks_to_array(landmarks, count: int) -> np.ndarray:
@@ -46,7 +47,7 @@ def _swap_hands_if_needed(pose: np.ndarray, first_hand: np.ndarray, second_hand:
     hand_origin = hand[0]
     left_distance = float(np.sum((pose[15] - hand_origin) ** 2))
     right_distance = float(np.sum((pose[16] - hand_origin) ** 2))
-    should_be_second = left_distance < right_distance
+    should_be_second = right_distance < left_distance
     if (first_detected and should_be_second) or (second_detected and not should_be_second):
         return second_hand, first_hand
     return first_hand, second_hand

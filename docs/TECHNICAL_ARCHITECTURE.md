@@ -20,7 +20,7 @@ The current implementation is an ML integration prototype. It proves capture, la
 | 30-frame rolling `deque` | Not implemented | Snapshot sequences are accumulated in a Python list and finalized explicitly |
 | ONNX Runtime inference | Implemented | Quantized ORT model, CPU execution provider, cached session |
 | LSTM inference | Not active | LSTM configuration exists upstream, but the exported runtime model is a transformer |
-| Confidence rejection | Implemented | Top probability below 0.35 returns `no_confident_match` |
+| Confidence rejection | Implemented | Top probability below 0.75 returns `no_confident_match` |
 | Majority-vote smoothing/debouncing | Not implemented | One inference is emitted per finalized clip or snapshot sequence |
 | Labelled mobile data collection | Implemented | Consented clips and JSONL manifest remain local and Git-ignored |
 | Signer-separated fine-tuning | Implemented as an offline workflow | Dataset preparation and PyTorch transfer-learning scripts are present |
@@ -43,22 +43,22 @@ The requested camera constraints are 640 × 480 ideal resolution, 24 frames per 
 
 ### 2.2 Local recognition service
 
-`local_recognition_server.py` is a Flask application bound to `127.0.0.1:4173`. It serves static review assets and four ML-facing endpoints:
+`local_recognition_server.py` is a Flask application bound to `127.0.0.1:4173` for local development. It honors standard deployment `PORT` settings and binds to `0.0.0.0` in that environment. It serves the phone application and ML-facing endpoints:
 
 - `POST /api/recognize`: manually uploaded short video.
 - `POST /api/mobile/recognize`: camera-recorded mobile-backup video.
 - `POST /api/frames`: ordered JPEG sequence compatible with the intended ESP32-CAM transport.
 - `POST /api/training/captures`: explicitly labelled local training recording.
 
-The Flask application has a 50 MB request-body limit. It is local-only, has no authentication, TLS termination, device registration, API versioning, persistent job queue, observability pipeline, or production WSGI deployment configuration. These properties are acceptable for a local prototype but not for deployment.
+The Flask application has a 50 MB request-body limit. A production Gunicorn command is supplied, but authentication, TLS termination, device registration, API versioning, persistent job queues, and an observability pipeline remain hosting responsibilities.
 
 ### 2.3 Landmark processing layer
 
-Video ingestion uses the patched INCLUDE preprocessing implementation. Snapshot ingestion uses `SnapshotSequence` in `photo_stream_recognition.py`, which reproduces the checkpoint's 134-value landmark schema.
+Video ingestion uses the self-contained `ishaara_runtime.py` preprocessing implementation. Its output was compared against the original INCLUDE path with zero numerical difference. Snapshot ingestion uses `SnapshotSequence` in `photo_stream_recognition.py`, which reproduces the same 134-value landmark schema.
 
 ### 2.4 Inference layer
 
-`recognize_video.py` owns the fixed tensor contract, label map, ONNX Runtime session, and top-k decoding. The runtime loads `exported/ishaara_include_transformer_small.quant.ort` with the CPU execution provider. The session is memoized with an `lru_cache(maxsize=1)`, preventing model reconstruction for every request.
+`recognize_refined.py` owns the deployed label metadata, ONNX Runtime session, confidence gate, and top-k decoding. It loads the checked-in 3.68 MB two-label quantized ONNX model with the CPU execution provider. The session is memoized with `lru_cache(maxsize=1)`, preventing model reconstruction for every request.
 
 ## 3. Implemented end-to-end data flow
 
@@ -68,7 +68,7 @@ The mobile backup is clip-oriented rather than stream-oriented.
 
 1. The browser opens the selected camera with `getUserMedia`.
 2. When recognition is requested, it selects the first supported recording MIME type from VP8 WebM, generic WebM, and MP4.
-3. A `MediaRecorder` runs for 2.5 seconds and requests encoded chunks every 250 ms.
+3. A `MediaRecorder` runs for 2.5 seconds and requests encoded chunks every 150 ms.
 4. The chunks are combined into one browser `Blob` and wrapped as a `File` named `mobile-sign.webm` or `mobile-sign.mp4`.
 5. The browser posts that file as multipart form data under the `clip` field to `POST /api/mobile/recognize`.
 6. The Flask service writes the upload to a uniquely named temporary file.
@@ -167,7 +167,7 @@ Face landmarks also raise a cost/benefit question. Non-manual facial markers can
 
 ### 6.1 Active model architecture
 
-The active checkpoint is the INCLUDE small no-CNN transformer, not an LSTM. Its principal layers are:
+The active checkpoint is a small no-CNN transformer fine-tuned on the team's scoped data, not an LSTM. Its principal layers are:
 
 - Linear projection from 134 input features to hidden width 256.
 - Learned absolute positional embeddings with maximum capacity 256 positions.
@@ -176,30 +176,29 @@ The active checkpoint is the INCLUDE small no-CNN transformer, not an LSTM. Its 
 - Four attention heads per transformer layer.
 - Temporal max pooling across all 169 positions.
 - Dropout with probability 0.2 during training only.
-- Linear classification head from 256 hidden values to 263 class logits.
-- Softmax included in the export wrapper, producing 263 class probabilities.
+- Linear classification head from 256 hidden values to two class logits.
+- Numerically stable softmax applied by the Python runtime.
 
-The fixed ONNX input is named `keypoint_sequence`; the fixed output is named `class_probabilities`. Export uses opset 17 with constant folding and no dynamic axes.
+The fixed ONNX input is named `input`; the output is named `logits`. Export uses opset 17 with no dynamic axes.
 
 ### 6.2 Model packaging
 
-The verified PyTorch checkpoint is exported to ONNX, checked with the ONNX checker, and compared numerically against PyTorch on a sample tensor. Dynamic QInt8 weight quantization is then applied. The quantized graph is converted into ORT format using fixed optimization style and ARM as the target platform.
+The verified PyTorch checkpoint is exported by `scripts/export_refined_onnx.py`, then receives dynamic QInt8 weight quantization. The quantized graph runs directly through ONNX Runtime.
 
 The generated artifacts observed during implementation are approximately:
 
-- Full ONNX: 14.70 MB.
-- Quantized ONNX: 3.75 MB.
-- ORT package: 3.74 MB.
+- PyTorch training checkpoint: approximately 14.4 MB.
+- Quantized deployment ONNX: approximately 3.68 MB.
 
-These files are generated locally and excluded from Git.
+The approved deployment ONNX, aggregate metrics, and training checkpoint are checked into the current prototype repository; raw recordings remain excluded.
 
 ### 6.3 Inference mechanics
 
-The runtime validates exact shape `(1, 169, 134)`, executes the graph with `CPUExecutionProvider`, extracts the first batch row, sorts probabilities in descending order, maps output indices through the 263-label INCLUDE map, and returns the requested top-k candidates.
+The runtime executes exact shape `(1, 169, 134)` with `CPUExecutionProvider`, extracts the first batch row, applies softmax, sorts probabilities in descending order, maps indices through the two-label metadata, and returns the requested top-k candidates.
 
-The current API requests three candidates. If the first probability is below 0.35, it returns `no_confident_match` and exposes the nearest tentative label only as diagnostic information. Otherwise, it returns `recognized` and all three candidates.
+If the first probability is below 0.75, the API returns `no_confident_match` rather than presenting a translation. Otherwise, it returns `recognized` and ranked candidates.
 
-The 0.35 threshold is a prototype guard, not a calibrated operating point. Softmax confidence is not equivalent to correctness, especially under capture-domain shift. The existing webcam tests demonstrated confidently incorrect predictions, so production promotion requires held-out calibration, per-class precision/recall, confusion matrices, and an explicit unknown/no-sign class.
+The 0.75 threshold is a measured prototype operating point, not a universal guarantee. Softmax confidence is not equivalent to correctness, especially under capture-domain shift, so broader promotion still requires held-out calibration, per-class precision/recall, confusion matrices, and an explicit unknown/no-sign class.
 
 ## 7. Output stabilization: implemented behavior and required refactor
 
@@ -285,7 +284,7 @@ This workflow reduces but does not eliminate evaluation risk. With only a few si
 
 ### 10.3 Promotion boundary
 
-The fine-tuning script writes a PyTorch `.pth` artifact and metrics. It does not export the refined checkpoint to ONNX/ORT or update `recognize_video.py`. This is deliberate: validation and explicit promotion are required before replacing the live baseline.
+The fine-tuning script writes a PyTorch `.pth` artifact and metrics. After review, `scripts/export_refined_onnx.py` creates the quantized deployment model. The service can promote it with `ISHAARA_REFINED_MODEL` and `ISHAARA_REFINED_METADATA` without deleting the prior checkpoint.
 
 ## 11. Engineering rationale for temporal classification
 
