@@ -12,6 +12,7 @@ import os
 import re
 import tempfile
 import uuid
+from hmac import compare_digest
 from datetime import datetime, timezone
 from time import monotonic
 from pathlib import Path
@@ -19,7 +20,7 @@ from threading import Lock
 from urllib.parse import urlparse
 
 import numpy as np
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 from ishaara_runtime import extract_feature_tensor
 from personal_signs import EXAMPLES_PER_SIGN, MAX_PERSONAL_SIGNS, build_embedding, match_personal_sign
@@ -39,10 +40,13 @@ FIELD_CAPTURE_DIR = ROOT / "data" / "isl-field-captures"
 ALLOWED_VIDEO_SUFFIXES = {".avi", ".m4v", ".mov", ".mp4", ".webm"}
 MAX_ACTIVE_SEQUENCES = 8
 MAX_PAIRED_DEVICES = 128
+MAX_PREVIEW_BYTES = 350 * 1024
 SEQUENCE_IDLE_SECONDS = 120
 sequences: dict[str, SnapshotSequence] = {}
 device_results: dict[str, dict] = {}
 device_last_seen: dict[str, float] = {}
+device_previews: dict[str, bytes] = {}
+device_capture_requests: dict[str, str] = {}
 landmark_extraction_lock = Lock()
 
 app = Flask(__name__)
@@ -59,6 +63,19 @@ def configured_origins() -> set[str]:
 
 
 ALLOWED_ORIGINS = configured_origins()
+
+
+def device_request_is_authorized() -> bool:
+    """Validate the optional key shared by the ESP32 and its paired phone."""
+
+    configured_key = os.environ.get("ISHAARA_DEVICE_KEY", "").strip()
+    if not configured_key:
+        return True
+    return compare_digest(request.headers.get("X-Ishaara-Device-Key", ""), configured_key)
+
+
+def valid_device_id(device_id: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", device_id))
 
 
 def origin_is_allowed(origin: str) -> bool:
@@ -80,7 +97,7 @@ def disable_development_cache(response):
     if origin_is_allowed(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Ishaara-Device-Key"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
@@ -182,6 +199,7 @@ def active_model_status():
         labels=refined_labels(),
         minimum_confidence=REFINED_MINIMUM_CONFIDENCE,
         metrics=refined_model_metrics(),
+        hardware_key_required=bool(os.environ.get("ISHAARA_DEVICE_KEY", "").strip()),
     )
 
 
@@ -392,6 +410,8 @@ def process_snapshot(sequence_id: str, image_bytes: bytes, mimetype: str, is_fin
 def recognize_snapshot():
     """Receive one multipart ESP32 JPEG; final=true closes the sign sequence."""
 
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
     snapshot = request.files.get("frame")
     return process_snapshot(
         request.form.get("sequence_id", "").strip(),
@@ -406,6 +426,8 @@ def recognize_snapshot():
 def recognize_raw_snapshot():
     """Receive an ESP32 frame buffer directly without multipart RAM overhead."""
 
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
     return process_snapshot(
         request.args.get("sequence_id", "").strip(),
         request.get_data(cache=False),
@@ -419,7 +441,9 @@ def recognize_raw_snapshot():
 def latest_device_result(device_id: str):
     """Return the newest finalized ESP32 result to the paired phone app."""
 
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", device_id):
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
+    if not valid_device_id(device_id):
         return jsonify(error="Use a device ID containing letters, numbers, underscores, or hyphens."), 400
     result = device_results.get(device_id)
     if result is None:
@@ -427,6 +451,52 @@ def latest_device_result(device_id: str):
         return jsonify(status="online" if online else "waiting", online=online, device_id=device_id), 200 if online else 404
     online = monotonic() - device_last_seen.get(device_id, 0) < 15
     return jsonify(**result, online=online)
+
+
+@app.post("/api/devices/<device_id>/preview")
+def upload_device_preview(device_id: str):
+    """Accept one low-rate JPEG preview and return a pending capture command."""
+
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
+    if not valid_device_id(device_id):
+        return jsonify(error="Invalid ESP32 device ID."), 400
+    if request.mimetype not in {"image/jpeg", "image/jpg"}:
+        return jsonify(error="Preview frames must use JPEG encoding."), 415
+    image_bytes = request.get_data(cache=False)
+    if not image_bytes or len(image_bytes) > MAX_PREVIEW_BYTES:
+        return jsonify(error="Preview JPEG must be between 1 byte and 350 KB."), 413
+    device_previews[device_id] = image_bytes
+    device_last_seen[device_id] = monotonic()
+    command_id = device_capture_requests.pop(device_id, "")
+    return jsonify(status="online", capture_requested=bool(command_id), command_id=command_id)
+
+
+@app.get("/api/devices/<device_id>/preview.jpg")
+def device_preview(device_id: str):
+    """Relay the most recent ESP32 preview frame to its paired web app."""
+
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
+    if not valid_device_id(device_id):
+        return jsonify(error="Invalid ESP32 device ID."), 400
+    image_bytes = device_previews.get(device_id)
+    if image_bytes is None:
+        return jsonify(status="waiting", error="No ESP32 preview frame has arrived yet."), 404
+    return Response(image_bytes, mimetype="image/jpeg", headers={"X-Ishaara-Device": device_id})
+
+
+@app.post("/api/devices/<device_id>/capture")
+def request_device_capture(device_id: str):
+    """Queue one recognition burst for the ESP32's next preview response."""
+
+    if not device_request_is_authorized():
+        return jsonify(error="Invalid ESP32 device key."), 401
+    if not valid_device_id(device_id):
+        return jsonify(error="Invalid ESP32 device ID."), 400
+    command_id = uuid.uuid4().hex
+    device_capture_requests[device_id] = command_id
+    return jsonify(status="queued", device_id=device_id, command_id=command_id), 202
 
 
 @app.errorhandler(413)

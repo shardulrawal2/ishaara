@@ -68,7 +68,7 @@ The product roadmap targets the capabilities below. The checked-in working model
 
 ## Software pipeline
 
-1. **Capture** — the ESP32-CAM captures JPEG frames and streams them to the phone over Wi-Fi. During development, the phone camera can also record the same short signing clip directly as a backup capture source.
+1. **Capture** — the ESP32-CAM sends preview JPEGs and short recognition bursts to the cloud service over HTTPS. The deployed phone app displays the relayed ESP32 preview; its own camera remains a selectable backup source.
 2. **Pose extraction** — MediaPipe Holistic converts pixels into hand, face, and body landmarks.
 3. **Sequence buffering** — the app collects roughly 1–2 seconds of landmarks because a sign is a movement, not a single pose.
 4. **Classification** — an LSTM or transformer-based model predicts a trained sign and confidence score.
@@ -102,7 +102,7 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 
 | Stage | Goal | Status |
 |---|---|---|
-| 1 | ESP32-CAM video stream to phone | Planned |
+| 1 | ESP32-CAM cloud preview and recognition burst | Implemented firmware and API path |
 | 2 | Landmark extraction and scoped sign classifier | Working for 2 validated labels |
 | 3 | Text-to-speech and emergency phrases | Working in the web app |
 | 4 | Companion app and custom gesture flow | Working responsive web MVP with personal gesture enrollment |
@@ -129,7 +129,7 @@ The current checkpoint is a useful baseline, but it must not be treated as proof
 
 - **Mobile-video backup:** records a short clip and sends it through the model's video-native landmark pipeline. The clip is deleted immediately after recognition.
 - **ESP32 JPEG route:** accepts ordered snapshots at `/api/frames`; this remains the hardware integration route and is not removed while ESP32-CAM work continues.
-- **ESP32 direct-buffer route:** accepts raw JPEG buffers at `/api/frames/raw` and relays finalized results to a paired phone. See [`docs/ESP32_CAM_CONNECTION.md`](docs/ESP32_CAM_CONNECTION.md).
+- **ESP32 cloud camera route:** relays the latest authenticated preview JPEG, accepts browser-triggered capture commands, ingests raw JPEG sequences at `/api/frames/raw`, and returns finalized results to the paired phone. See [`docs/ESP32_CAM_CONNECTION.md`](docs/ESP32_CAM_CONNECTION.md).
 
 The backend can also save explicitly consented, labelled ISL recordings through `POST /api/training/captures` for full model refinement. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 

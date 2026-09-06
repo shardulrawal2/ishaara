@@ -9,7 +9,11 @@ const PERSONAL_EXAMPLES_REQUIRED = 3;
 const onboarding = $("#onboarding");
 const cameraPanel = $("#camera-panel");
 const cameraPreview = $("#camera-preview");
+const espPreview = $("#esp-preview");
 const cameraStatus = $("#camera-status");
+const fpsLabel = $("#fps-label");
+const cameraEmptyTitle = $("#camera-empty-title");
+const cameraEmptyDetail = $("#camera-empty-detail");
 const cameraToggle = $("#camera-toggle");
 const cameraFacingToggle = $("#camera-facing-toggle");
 const cameraSelect = $("#camera-select");
@@ -38,6 +42,7 @@ const sentenceIntent = $("#sentence-intent");
 const sentenceTokensElement = $("#sentence-tokens");
 const sentenceOutput = $("#sentence-output");
 const espDeviceIdInput = $("#esp-device-id");
+const espDeviceKeyInput = $("#esp-device-key");
 const espConnectButton = $("#connect-esp");
 const espStatus = $("#esp-status");
 const trainingDialog = $("#training-dialog");
@@ -60,6 +65,10 @@ let enrollmentExamples = [];
 let sentenceTokens = [];
 let espPollTimer = null;
 let lastEspEventId = "";
+let cameraSource = window.localStorage.getItem("ishaara-camera-source") || "esp32";
+let espPreviewObjectUrl = "";
+let espCaptureQueued = false;
+let espCaptureTimeout = null;
 
 const SPEECH_COPY = {
   "en-IN": {
@@ -154,6 +163,36 @@ function translatedSign(label) {
   return SPEECH_COPY[speechLanguage()]?.[normalized] || formatLabel(label);
 }
 
+function espHeaders() {
+  const key = espDeviceKeyInput.value.trim();
+  return key ? { "X-Ishaara-Device-Key": key } : {};
+}
+
+function setCameraSource(source) {
+  cameraSource = source === "phone" ? "phone" : "esp32";
+  window.localStorage.setItem("ishaara-camera-source", cameraSource);
+  $$('[data-camera-source]').forEach((button) => button.classList.toggle("is-selected", button.dataset.cameraSource === cameraSource));
+  cameraPanel.classList.toggle("is-esp", cameraSource === "esp32");
+  cameraFacingToggle.hidden = cameraSource === "esp32";
+  if (cameraSource === "esp32") {
+    stopCamera();
+    cameraStatus.textContent = "Waiting for ESP32";
+    fpsLabel.textContent = "cloud preview";
+    cameraToggle.textContent = "ESP settings";
+    cameraEmptyTitle.textContent = "Waiting for ESP32 camera";
+    cameraEmptyDetail.textContent = "Pair the camera in Settings. Phone camera remains available above.";
+    const pairedId = espDeviceIdInput.value.trim();
+    if (pairedId) connectEspCamera();
+  } else {
+    cameraPanel.classList.remove("is-on");
+    cameraStatus.textContent = "Camera off";
+    fpsLabel.textContent = "phone";
+    cameraToggle.textContent = "Start camera";
+    cameraEmptyTitle.textContent = "Camera is ready when you are";
+    cameraEmptyDetail.textContent = "Keep both hands and your upper body inside the frame.";
+  }
+}
+
 function speak(text) {
   if (!("speechSynthesis" in window) || !text) {
     showToast("Speech output is not available in this browser.");
@@ -246,7 +285,7 @@ async function pollEspResult() {
   const deviceId = espDeviceIdInput.value.trim();
   if (!deviceId) return;
   try {
-    const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/latest`, { cache: "no-store" });
+    const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/latest`, { cache: "no-store", headers: espHeaders() });
     if (response.status === 404) {
       espConnectButton.textContent = "Waiting for ESP32 frames";
       espStatus.textContent = "Paired in the app, but this physical ESP32 has not contacted Render yet.";
@@ -257,18 +296,42 @@ async function pollEspResult() {
     if (!payload.online) {
       espConnectButton.textContent = "ESP32 offline";
       espStatus.textContent = "The ESP32 sent an earlier result but has not sent a frame in the last 15 seconds.";
+      if (cameraSource === "esp32") {
+        cameraPanel.classList.remove("is-on");
+        cameraStatus.textContent = "ESP32 offline";
+      }
       return;
     }
     espConnectButton.textContent = "ESP32 online";
     espStatus.textContent = payload.event_id ? "ESP32-CAM is sending frames through Render." : "ESP32-CAM is online; waiting for a completed sign.";
+    await refreshEspPreview(deviceId);
     if (payload.event_id && payload.event_id !== lastEspEventId) {
       lastEspEventId = payload.event_id;
+      espCaptureQueued = false;
+      window.clearTimeout(espCaptureTimeout);
+      espCaptureTimeout = null;
+      recognizeButton.disabled = false;
+      recognizeButton.textContent = "Recognize one sign";
       presentRecognition(payload);
       setRoute("home");
     }
   } catch (error) {
     espStatus.textContent = error.message;
   }
+}
+
+async function refreshEspPreview(deviceId) {
+  if (cameraSource !== "esp32") return;
+  const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/preview.jpg?_=${Date.now()}`, { cache: "no-store", headers: espHeaders() });
+  if (!response.ok) return;
+  const nextUrl = URL.createObjectURL(await response.blob());
+  const previousUrl = espPreviewObjectUrl;
+  espPreviewObjectUrl = nextUrl;
+  espPreview.src = nextUrl;
+  cameraPanel.classList.add("is-on");
+  cameraStatus.textContent = "ESP32 live";
+  fpsLabel.textContent = "cloud preview";
+  if (previousUrl) URL.revokeObjectURL(previousUrl);
 }
 
 function connectEspCamera() {
@@ -278,11 +341,34 @@ function connectEspCamera() {
     return;
   }
   window.localStorage.setItem("ishaara-esp-device-id", deviceId);
+  window.localStorage.setItem("ishaara-esp-device-key", espDeviceKeyInput.value.trim());
   window.clearInterval(espPollTimer);
   espConnectButton.textContent = "Checking for ESP32…";
   espStatus.textContent = "Pairing does not start the camera; checking whether its firmware is sending frames…";
   pollEspResult();
   espPollTimer = window.setInterval(pollEspResult, 1500);
+}
+
+async function requestEspCapture() {
+  const deviceId = espDeviceIdInput.value.trim();
+  if (!deviceId) throw new Error("Pair the ESP32 device in Settings first, or switch to Phone camera.");
+  if (espCaptureQueued) throw new Error("An ESP32 recognition request is already waiting for the camera.");
+  await runCountdown();
+  const response = await fetchApi(`/api/devices/${encodeURIComponent(deviceId)}/capture`, { method: "POST", headers: espHeaders() }, 1);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Could not request an ESP32 capture.");
+  espCaptureQueued = true;
+  window.clearTimeout(espCaptureTimeout);
+  espCaptureTimeout = window.setTimeout(() => {
+    if (!espCaptureQueued) return;
+    espCaptureQueued = false;
+    recognizeButton.disabled = false;
+    recognizeButton.textContent = "Recognize one sign";
+    updateRecognitionState("ESP32 did not respond", "Check its power and internet connection, then try again or switch to the phone camera.");
+  }, 60000);
+  recognizeButton.textContent = "Waiting for ESP32…";
+  actionNote.textContent = "Request sent. The ESP32 will capture and upload one two-second sign sequence.";
+  updateRecognitionState("ESP32 recording requested", "Perform one complete sign in front of the ESP32 camera.");
 }
 
 async function loadModel({ retries = 3 } = {}) {
@@ -458,7 +544,9 @@ function presentRecognition(payload) {
     renderSentenceTokens();
     sentenceOutput.textContent = buildConnectedSentence();
   }
-  actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
+  actionNote.textContent = payload.device_id
+    ? "The ESP32 snapshots were processed and released; only the result remains."
+    : "Recognition completed; the temporary phone clip was deleted.";
   speak(currentSpeechText);
 }
 
@@ -467,6 +555,10 @@ async function recognizeFromLiveCamera() {
   mobileCaptureButton.disabled = true;
   try {
     if (!(await loadModel())) throw new Error("The recognition model is not connected yet. Tap the model status and retry.");
+    if (cameraSource === "esp32") {
+      await requestEspCapture();
+      return;
+    }
     if (!cameraStream) await startCamera();
     await runCountdown();
     actionNote.textContent = "Recording now — perform one complete sign.";
@@ -477,11 +569,11 @@ async function recognizeFromLiveCamera() {
     presentRecognition(await sendRecognitionClip(clip));
   } catch (error) {
     updateRecognitionState("Could not recognize", error.message);
-    actionNote.textContent = "Improve lighting, keep both hands visible, and try again.";
+    actionNote.textContent = cameraSource === "esp32" ? error.message : "Improve lighting, keep both hands visible, and try again.";
   } finally {
-    recognizeButton.disabled = false;
+    recognizeButton.disabled = espCaptureQueued;
     mobileCaptureButton.disabled = false;
-    recognizeButton.textContent = "Recognize one sign";
+    recognizeButton.textContent = espCaptureQueued ? "Waiting for ESP32…" : "Recognize one sign";
     countdown.hidden = true;
   }
 }
@@ -583,6 +675,7 @@ $("#get-started").addEventListener("click", dismissOnboarding);
 $("#skip-onboarding").addEventListener("click", dismissOnboarding);
 $("#show-welcome").addEventListener("click", () => onboarding.classList.remove("is-hidden"));
 cameraToggle.addEventListener("click", async () => {
+  if (cameraSource === "esp32") { setRoute("settings"); return; }
   if (cameraStream) { stopCamera(); return; }
   try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
 });
@@ -599,6 +692,7 @@ cameraSelect.addEventListener("change", async () => {
   if (!cameraStream) return;
   try { await startCamera(); } catch (error) { showToast(error.message); }
 });
+$$('[data-camera-source]').forEach((button) => button.addEventListener("click", () => setCameraSource(button.dataset.cameraSource)));
 espConnectButton.addEventListener("click", connectEspCamera);
 modelPill.addEventListener("click", () => loadModel({ retries: 3 }));
 window.addEventListener("online", () => loadModel({ retries: 3 }));
@@ -675,6 +769,7 @@ const storedTheme = window.localStorage.getItem("ishaara-theme") || "light";
 document.body.dataset.theme = storedTheme;
 languageSelect.value = window.localStorage.getItem("ishaara-language") || "en-IN";
 espDeviceIdInput.value = window.localStorage.getItem("ishaara-esp-device-id") || "";
+espDeviceKeyInput.value = window.localStorage.getItem("ishaara-esp-device-key") || "";
 $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice.dataset.themeChoice === storedTheme));
 if (window.localStorage.getItem("ishaara-onboarded") === "true") onboarding.classList.add("is-hidden");
 refreshLanguageContent();
@@ -684,3 +779,4 @@ window.setTimeout(() => {
   if (storedVoice && [...voiceSelect.options].some((option) => option.value === storedVoice)) voiceSelect.value = storedVoice;
 }, 250);
 loadModel();
+setCameraSource(cameraSource);

@@ -14,6 +14,7 @@ data/demo-clips/
 data/isl-field-captures/
 data/isl-training-keypoints*/
 artifacts/*
+firmware/**/secrets.h
 !artifacts/hello-thankyou-v1/
 !artifacts/hello-thankyou-v1/ishaara_isl_refinement.pth
 !artifacts/hello-thankyou-v1/ishaara_isl_refinement.quant.onnx

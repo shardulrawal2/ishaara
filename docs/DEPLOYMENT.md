@@ -13,8 +13,9 @@ The frontend sends each short camera recording to the Render service over HTTPS.
 2. Select the branch containing these changes.
 3. Render reads `render.yaml` from the repository root.
 4. For `ISHAARA_ALLOWED_ORIGINS`, enter the Vercel origin if known, such as `https://ishaara.vercel.app`. It can be updated after the Vercel project is created.
-5. Deploy and copy the service URL, such as `https://ishaara-api.onrender.com`.
-6. Open `https://YOUR-RENDER-URL/api/health`. It must return JSON containing `"status": "ready"`.
+5. Set `ISHAARA_DEVICE_KEY` to a long random secret. Enter that same value in the ESP32 firmware and the app's ESP32 settings.
+6. Deploy and copy the service URL, such as `https://ishaara-api.onrender.com`.
+7. Open `https://YOUR-RENDER-URL/api/health`. It must return JSON containing `"status": "ready"`.
 
 The Blueprint defines the Python build command, Gunicorn start command, and health check. It intentionally runs one Gunicorn worker because extra workers duplicate the model and MediaPipe memory. If the service runs out of memory, select a larger Render instance.
 
@@ -45,15 +46,17 @@ Save the variable and restart or redeploy the Render service.
 ## 4. Test on a phone
 
 1. Open the HTTPS Vercel URL.
-2. Press **Get Started**.
-3. Press **Start camera** and allow camera permission.
-4. Press **Recognize one sign** and perform `hello` or `thankyou` after the countdown.
+2. The home screen defaults to **ESP32 camera**. Pair it in Settings using the device ID and key from the firmware, or choose **Phone camera** for the fallback.
+3. With the phone source selected, press **Start camera** and allow camera permission.
+4. Press **Recognize one sign** and perform a trained sign after the countdown.
 5. The recognized text is spoken automatically. Tap the speaker button only to replay it.
 6. **Use phone camera** remains available as a native record/upload fallback.
 
 To demonstrate a personal name, open **Vocabulary → Create sign**, enter the name, and record one distinct gesture three times. The templates are stored in that phone's browser, so enroll and demonstrate the sign on the same device and browser.
 
 HTTPS is required for mobile camera access. A sleeping backend can make the first request slower.
+
+See [`ESP32_CAM_CONNECTION.md`](ESP32_CAM_CONNECTION.md) for the bundled firmware and hardware setup.
 
 ## Local development
 

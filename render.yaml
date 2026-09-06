@@ -10,3 +10,5 @@ services:
         value: 3.12.14
       - key: ISHAARA_ALLOWED_ORIGINS
         sync: false
+      - key: ISHAARA_DEVICE_KEY
+        sync: false
