@@ -1,45 +1,70 @@
-# Deploying the Phone MVP
+# Deploy Ishaara on Vercel and Render
 
-Ishaara is not a static website. The browser interface calls a Python service that performs MediaPipe landmark extraction and ONNX inference. Deploy the repository as a **Python web service**, not as static hosting.
+The repository has two deployable parts:
 
-## Service configuration
+- **Vercel:** the responsive mobile web app in `review-demo/`
+- **Render:** the Flask, MediaPipe, and ONNX recognition API
 
-- Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT local_recognition_server:app`
-- Health-check path: `/api/health`
-- Recommended memory: at least 1 GB for MediaPipe and video processing
-- HTTPS: required for live mobile `getUserMedia` camera access
+The frontend sends each short camera recording to the Render service over HTTPS.
 
-The included `Procfile` supplies the start command on platforms that support it. `local_recognition_server.py` also reads the standard `PORT` environment variable automatically.
+## 1. Deploy the backend to Render
 
-## What is included
+1. In Render, choose **New → Blueprint** and connect this GitHub repository.
+2. Select the branch containing these changes.
+3. Render reads `render.yaml` from the repository root.
+4. For `ISHAARA_ALLOWED_ORIGINS`, enter the Vercel origin if known, such as `https://ishaara.vercel.app`. It can be updated after the Vercel project is created.
+5. Deploy and copy the service URL, such as `https://ishaara-api.onrender.com`.
+6. Open `https://YOUR-RENDER-URL/api/health`. It must return JSON containing `"status": "ready"`.
 
-- The quantized two-label ONNX model
-- Model labels and aggregate evaluation metrics
-- Self-contained inference architecture and feature extraction
-- The phone interface and native text-to-speech controls
+The Blueprint defines the Python build command, Gunicorn start command, and health check. It intentionally runs one Gunicorn worker because extra workers duplicate the model and MediaPipe memory. If the service runs out of memory, select a larger Render instance.
 
-The ignored `INCLUDE` research checkout is not needed by the deployed recognition service.
+## 2. Deploy the frontend to Vercel
 
-## Mobile test
+1. In Vercel, import the same GitHub repository.
+2. Leave the repository root as the project root.
+3. Add this environment variable:
 
-1. Wait until `https://<your-domain>/api/health` returns `{"status":"ready", ...}`.
-2. Open the HTTPS site on the phone.
+   ```text
+   ISHAARA_API_BASE=https://YOUR-RENDER-URL
+   ```
+
+   Do not add a trailing slash. Enable it for Production and Preview if both are used.
+4. Deploy. `vercel.json` builds and publishes `review-demo/`.
+5. Copy the final Vercel origin.
+
+## 3. Allow the Vercel frontend
+
+In Render, set `ISHAARA_ALLOWED_ORIGINS` to the exact Vercel origin. Multiple origins can be comma-separated:
+
+```text
+https://ishaara.vercel.app,https://www.example.com
+```
+
+Save the variable and restart or redeploy the Render service.
+
+## 4. Test on a phone
+
+1. Open the HTTPS Vercel URL.
+2. Press **Get Started**.
 3. Press **Start camera** and allow camera permission.
-4. Press **Recognize one sign**.
-5. Perform `hello` or `thankyou` after the countdown.
-6. Confirm that an accepted label is displayed and spoken automatically.
-7. Press the speaker button to replay it.
+4. Press **Recognize one sign** and perform `hello` or `thankyou` after the countdown.
+5. Tap the speaker button to hear the recognized text.
+6. **Use phone camera** remains available as a native record/upload fallback.
 
-The **Use phone camera** button remains available as a native record/upload fallback.
+HTTPS is required for mobile camera access. A sleeping backend can make the first request slower.
 
-## Storage warning
+## Local development
 
-Recognition clips use temporary files and are deleted after inference. The **Collect samples** feature writes consented recordings to `data/isl-field-captures`; most cloud services use ephemeral filesystems, so do not rely on cloud collection unless a private persistent disk is configured.
+Run from the repository root:
 
-## Deployment limitations
+```powershell
+.\INCLUDE\.venv\Scripts\python.exe local_recognition_server.py
+```
 
-- A static-only host cannot execute this model backend.
-- Free services may sleep, causing a slow first request.
-- One web worker is intentional: multiple workers duplicate the model and MediaPipe memory.
-- Do not describe the two-label checkpoint as unrestricted ISL translation.
+Then open `http://127.0.0.1:4173/`. The checked-in `review-demo/config.js` uses same-origin API calls locally.
+
+## Important limitations
+
+- Recognition clips are temporary and deleted after inference.
+- Cloud sample collection is not durable without persistent storage.
+- The deployed model currently recognizes only its tested `hello` and `thankyou` labels. It is not unrestricted ISL translation.

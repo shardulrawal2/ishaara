@@ -1,7 +1,8 @@
-"""Local review server for Ishaara's real video-recognition pipeline.
+"""Web service for Ishaara's video-recognition pipeline.
 
-The server is intentionally local-only. Uploaded clips are stored in a temporary
-file just long enough to extract landmarks and run the ONNX model, then deleted.
+Uploaded clips are stored in a temporary file just long enough to extract
+landmarks and run the ONNX model, then deleted. The same service runs locally or
+as the Render API used by the Vercel frontend.
 """
 
 from __future__ import annotations
@@ -38,11 +39,27 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 
+def configured_origins() -> set[str]:
+    """Return the exact browser origins allowed to call the deployed API."""
+
+    configured = os.environ.get("ISHAARA_ALLOWED_ORIGINS", "")
+    if configured.strip():
+        return {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+    return {"http://127.0.0.1:4173", "http://localhost:4173"}
+
+
+ALLOWED_ORIGINS = configured_origins()
+
+
 @app.after_request
 def disable_development_cache(response):
-    """Keep rapidly-changing local app assets and model metadata fresh."""
+    """Keep app metadata fresh and authorize the configured frontend origin."""
 
     response.headers["Cache-Control"] = "no-store"
+    origin = request.headers.get("Origin", "").rstrip("/")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
     return response
 
 

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: ishaara-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT local_recognition_server:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: ISHAARA_ALLOWED_ORIGINS
+        sync: false

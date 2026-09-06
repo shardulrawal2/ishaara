@@ -1,7 +1,10 @@
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+const API_BASE = (document.documentElement.dataset.apiBase || "").replace(/\/$/, "");
+const apiUrl = (path) => `${API_BASE}${path}`;
 
+const onboarding = $("#onboarding");
 const cameraPanel = $("#camera-panel");
 const cameraPreview = $("#camera-preview");
 const cameraStatus = $("#camera-status");
@@ -26,7 +29,6 @@ const wordList = $("#word-list");
 const vocabularyCount = $("#vocabulary-count");
 const vocabularySearch = $("#vocabulary-search");
 const voiceSelect = $("#voice-select");
-const autoSpeakToggle = $("#auto-speak");
 const trainingDialog = $("#training-dialog");
 const trainingLabel = $("#training-label");
 const trainingSigner = $("#training-signer");
@@ -56,6 +58,11 @@ function setRoute(route) {
   $$(".app-view").forEach((view) => view.classList.toggle("is-active", view.dataset.view === route));
   $$(".bottom-nav button").forEach((button) => button.classList.toggle("is-active", button.dataset.route === route));
   $(".app-main").scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function dismissOnboarding() {
+  onboarding.classList.add("is-hidden");
+  window.localStorage.setItem("ishaara-onboarded", "true");
 }
 
 function updateRecognitionState(title, detail, confidence = 0, accepted = false) {
@@ -105,7 +112,7 @@ function loadVoices() {
 
 async function loadModel() {
   try {
-    const response = await fetch("/api/model", { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/model"), { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Model unavailable");
     modelLabels = payload.labels;
@@ -221,7 +228,7 @@ async function recordCameraClip(duration = 2500) {
 async function sendRecognitionClip(blob, filename = "ishaara-camera.webm") {
   const form = new FormData();
   form.append("clip", blob, filename);
-  const response = await fetch("/api/mobile/recognize", { method: "POST", body: form });
+  const response = await fetch(apiUrl("/api/mobile/recognize"), { method: "POST", body: form });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Recognition failed.");
   return payload;
@@ -241,7 +248,6 @@ function presentRecognition(payload) {
   updateRecognitionState(currentResult, "Accepted by the scoped local model. Tap the speaker to say it aloud.", winner.confidence, true);
   conversationSign.textContent = currentResult;
   actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
-  if (autoSpeakToggle.checked) speak(currentResult);
 }
 
 async function recognizeFromLiveCamera() {
@@ -303,7 +309,7 @@ async function saveTrainingCapture() {
     form.append("signer", signer);
     form.append("clip", clip, "training-example.webm");
     trainingButton.textContent = "Saving locally…";
-    const response = await fetch("/api/training/captures", { method: "POST", body: form });
+    const response = await fetch(apiUrl("/api/training/captures"), { method: "POST", body: form });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Could not save the recording.");
     trainingStatus.textContent = `Saved one ${formatLabel(label)} example for ${signer}. Repeat with varied angles and lighting.`;
@@ -330,6 +336,9 @@ function appendConversationMessage(text) {
 
 $$('[data-route]').forEach((button) => button.addEventListener("click", () => setRoute(button.dataset.route)));
 $("#brand-home").addEventListener("click", () => setRoute("home"));
+$("#get-started").addEventListener("click", dismissOnboarding);
+$("#skip-onboarding").addEventListener("click", dismissOnboarding);
+$("#show-welcome").addEventListener("click", () => onboarding.classList.remove("is-hidden"));
 cameraToggle.addEventListener("click", async () => {
   if (cameraStream) { stopCamera(); return; }
   try { await startCamera(); } catch (error) { actionNote.textContent = error.message; }
@@ -345,10 +354,6 @@ mobileCaptureInput.addEventListener("change", () => {
   if (file) recognizeUploadedClip(file);
 });
 speakResultButton.addEventListener("click", () => speak(currentResult));
-autoSpeakToggle.addEventListener("change", () => {
-  window.localStorage.setItem("ishaara-auto-speak", String(autoSpeakToggle.checked));
-  showToast(autoSpeakToggle.checked ? "Automatic speech enabled." : "Automatic speech disabled.");
-});
 voiceSelect.addEventListener("change", () => window.localStorage.setItem("ishaara-voice", voiceSelect.value));
 $("#conversation-recognize").addEventListener("click", () => setRoute("home"));
 $("#message-form").addEventListener("submit", (event) => {
@@ -384,7 +389,7 @@ if ("speechSynthesis" in window) window.speechSynthesis.addEventListener("voices
 const storedTheme = window.localStorage.getItem("ishaara-theme") || "light";
 document.body.dataset.theme = storedTheme;
 $$('[data-theme-choice]').forEach((choice) => choice.classList.toggle("is-selected", choice.dataset.themeChoice === storedTheme));
-autoSpeakToggle.checked = window.localStorage.getItem("ishaara-auto-speak") !== "false";
+if (window.localStorage.getItem("ishaara-onboarded") === "true") onboarding.classList.add("is-hidden");
 loadVoices();
 window.setTimeout(() => {
   loadVoices();
