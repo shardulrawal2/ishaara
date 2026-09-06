@@ -19,6 +19,30 @@ WINDOW_SIZE = 169
 FEATURE_DIM = 134
 POSE_POINTS = 25
 HAND_POINTS = 21
+TRAINING_ASPECT_RATIO = 4 / 3
+
+
+def _crop_to_training_aspect_ratio(frame: np.ndarray) -> np.ndarray:
+    """Match portrait/mobile input to the 4:3 geometry used by all training clips.
+
+    The camera preview uses a cover-style crop. Applying the same centered crop
+    before landmark extraction keeps normalized coordinates comparable with the
+    640 x 480 recordings used to train the scoped model.
+    """
+
+    height, width = frame.shape[:2]
+    if not height or not width:
+        return frame
+    aspect_ratio = width / height
+    if abs(aspect_ratio - TRAINING_ASPECT_RATIO) < 0.02:
+        return frame
+    if aspect_ratio < TRAINING_ASPECT_RATIO:
+        crop_height = max(1, min(height, round(width / TRAINING_ASPECT_RATIO)))
+        top = (height - crop_height) // 2
+        return frame[top : top + crop_height, :]
+    crop_width = max(1, min(width, round(height * TRAINING_ASPECT_RATIO)))
+    left = (width - crop_width) // 2
+    return frame[:, left : left + crop_width]
 
 
 def _landmarks_xy(landmarks, count: int) -> tuple[list[float], list[float]]:
@@ -78,6 +102,7 @@ def extract_feature_tensor(video_path: Path) -> np.ndarray:
             success, bgr = capture.read()
             if not success:
                 break
+            bgr = _crop_to_training_aspect_ratio(bgr)
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             hand_result = hands.process(rgb)
             pose_result = pose.process(rgb)

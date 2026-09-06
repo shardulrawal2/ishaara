@@ -71,7 +71,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .app-header { display: flex; min-height: 68px; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
 .brand-button { padding: 0; border: 0; background: transparent; cursor: pointer; font-size: 11px; }
 .brand-button .mini-mark { width: 36px; transform: scale(.84); transform-origin: left center; }
-.model-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--paper-strong); font-size: 9px; }
+.model-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--paper-strong); font: inherit; font-size: 9px; cursor: pointer; }
 .model-pill span { width: 6px; height: 6px; border-radius: 50%; background: #e2a33f; }
 .model-pill.is-ready span { background: var(--green); box-shadow: 0 0 0 4px rgba(46,159,104,.1); }
 .model-pill.is-error span { background: var(--red); }

@@ -1,1 +1,1 @@
-document.documentElement.dataset.apiBase = "";
+document.documentElement.dataset.apiBase = "https://ishaara-api.onrender.com";

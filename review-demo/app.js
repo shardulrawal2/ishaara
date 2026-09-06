@@ -41,6 +41,8 @@ const toast = $("#toast");
 let cameraStream = null;
 let currentResult = "";
 let modelLabels = [];
+let modelReady = false;
+let modelLoadPromise = null;
 let toastTimer = null;
 let speechPrimed = false;
 let activeFacingMode = "user";
@@ -142,21 +144,43 @@ function loadVoices() {
   if (voices.some((voice) => voice.name === previous)) voiceSelect.value = previous;
 }
 
-async function loadModel() {
-  try {
-    const response = await fetchApi("/api/model", { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Model unavailable");
-    modelLabels = payload.labels;
-    modelPill.classList.add("is-ready");
-    modelPillText.textContent = `${payload.labels.length} signs ready`;
-    settingsModelDetail.textContent = `${payload.model} · ${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out accuracy`;
-    renderVocabulary();
-  } catch (error) {
+async function loadModel({ retries = 3 } = {}) {
+  if (modelReady) return true;
+  if (modelLoadPromise) return modelLoadPromise;
+  modelLoadPromise = (async () => {
+    let lastError = null;
+    modelPill.classList.remove("is-ready", "is-error");
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        modelPillText.textContent = attempt ? "Waking model…" : "Checking model";
+        const response = await fetchApi("/api/model", { cache: "no-store" });
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json") ? await response.json() : {};
+        if (!response.ok) throw new Error(payload.error || `Recognition service returned ${response.status}.`);
+        if (!Array.isArray(payload.labels) || !payload.labels.length) throw new Error("The recognition service returned no vocabulary.");
+        modelLabels = payload.labels;
+        modelReady = true;
+        modelPill.classList.remove("is-error");
+        modelPill.classList.add("is-ready");
+        modelPillText.textContent = `${payload.labels.length} signs ready`;
+        settingsModelDetail.textContent = `${payload.model} · ${(payload.metrics.held_out_signer_accuracy * 100).toFixed(1)}% held-out accuracy`;
+        renderVocabulary();
+        return true;
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries) await wait(1500 * (attempt + 1));
+      }
+    }
     modelPill.classList.add("is-error");
-    modelPillText.textContent = "Model unavailable";
-    settingsModelDetail.textContent = error.message;
-    actionNote.textContent = "Start the local Python service and refresh this page.";
+    modelPillText.textContent = "Tap to retry model";
+    settingsModelDetail.textContent = lastError?.message || "Model unavailable";
+    actionNote.textContent = lastError?.message || "The recognition service is unavailable. Tap the model status to retry.";
+    return false;
+  })();
+  try {
+    return await modelLoadPromise;
+  } finally {
+    modelLoadPromise = null;
   }
 }
 
@@ -295,6 +319,7 @@ async function recognizeFromLiveCamera() {
   recognizeButton.disabled = true;
   mobileCaptureButton.disabled = true;
   try {
+    if (!(await loadModel())) throw new Error("The recognition model is not connected yet. Tap the model status and retry.");
     if (!cameraStream) await startCamera();
     await runCountdown();
     actionNote.textContent = "Recording now — perform one complete sign.";
@@ -320,6 +345,7 @@ async function recognizeUploadedClip(file) {
   updateRecognitionState("Reading phone clip", "Uploading to the local Ishaara service for landmark extraction.");
   actionNote.textContent = "Processing the selected camera recording…";
   try {
+    if (!(await loadModel())) throw new Error("The recognition model is not connected yet. Tap the model status and retry.");
     presentRecognition(await sendRecognitionClip(file, file.name || "phone-sign.mp4"));
   } catch (error) {
     updateRecognitionState("Could not recognize", error.message);
@@ -426,6 +452,8 @@ cameraSelect.addEventListener("change", async () => {
   if (!cameraStream) return;
   try { await startCamera(); } catch (error) { showToast(error.message); }
 });
+modelPill.addEventListener("click", () => loadModel({ retries: 3 }));
+window.addEventListener("online", () => loadModel({ retries: 3 }));
 recognizeButton.addEventListener("click", recognizeFromLiveCamera);
 mobileCaptureButton.addEventListener("click", () => mobileCaptureInput.click());
 mobileCaptureInput.addEventListener("change", () => {
