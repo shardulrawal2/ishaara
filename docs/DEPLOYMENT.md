@@ -48,8 +48,10 @@ Save the variable and restart or redeploy the Render service.
 2. Press **Get Started**.
 3. Press **Start camera** and allow camera permission.
 4. Press **Recognize one sign** and perform `hello` or `thankyou` after the countdown.
-5. Tap the speaker button to hear the recognized text.
+5. The recognized text is spoken automatically. Tap the speaker button only to replay it.
 6. **Use phone camera** remains available as a native record/upload fallback.
+
+To demonstrate a personal name, open **Vocabulary → Create sign**, enter the name, and record one distinct gesture three times. The templates are stored in that phone's browser, so enroll and demonstrate the sign on the same device and browser.
 
 HTTPS is required for mobile camera access. A sleeping backend can make the first request slower.
 
@@ -67,4 +69,5 @@ Then open `http://127.0.0.1:4173/`. The checked-in `review-demo/config.js` uses 
 
 - Recognition clips are temporary and deleted after inference.
 - Cloud sample collection is not durable without persistent storage.
+- Personal-sign templates persist in that browser's local storage; clearing site data or switching browsers removes them.
 - The deployed model currently recognizes only its tested `hello` and `thankyou` labels. It is not unrestricted ISL translation.

@@ -16,14 +16,18 @@ from datetime import datetime, timezone
 from time import monotonic
 from pathlib import Path
 
+import numpy as np
 from flask import Flask, jsonify, request, send_from_directory
 
+from ishaara_runtime import extract_feature_tensor
+from personal_signs import EXAMPLES_PER_SIGN, MAX_PERSONAL_SIGNS, build_embedding, match_personal_sign
 from photo_stream_recognition import MINIMUM_CONFIDENCE, MINIMUM_FRAMES, SnapshotSequence
 from recognize_refined import (
     MINIMUM_CONFIDENCE as REFINED_MINIMUM_CONFIDENCE,
     labels as refined_labels,
     model_metrics as refined_model_metrics,
     recognize as recognize_refined,
+    recognize_feature_tensor,
 )
 
 
@@ -63,23 +67,50 @@ def disable_development_cache(response):
     return response
 
 
-def classify_clip(clip, recognizer) -> tuple[list[tuple[str, float]], Path | None]:
-    """Run a temporary mobile or uploaded video through the native video path."""
+def save_temporary_clip(clip) -> Path:
+    """Validate and save an uploaded clip until the current request completes."""
 
     suffix = Path(clip.filename).suffix.lower()
     if suffix not in ALLOWED_VIDEO_SUFFIXES:
         raise ValueError("Use an MP4, MOV, WebM, M4V, or AVI video.")
+    with tempfile.NamedTemporaryFile(prefix="ishaara-upload-", suffix=suffix, delete=False) as file:
+        temporary_path = Path(file.name)
+        clip.save(file)
+    return temporary_path
 
-    temporary_path: Path | None = None
+
+def classify_clip(clip, recognizer) -> tuple[list[tuple[str, float]], Path | None]:
+    """Run a temporary mobile or uploaded video through the native video path."""
+
+    temporary_path = save_temporary_clip(clip)
     try:
-        with tempfile.NamedTemporaryFile(prefix="ishaara-upload-", suffix=suffix, delete=False) as file:
-            temporary_path = Path(file.name)
-            clip.save(file)
         return recognizer(temporary_path, top_k=3), temporary_path
     except Exception:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+        temporary_path.unlink(missing_ok=True)
         raise
+
+
+def personal_templates_from_request() -> dict[str, list[list[float]]]:
+    """Validate browser-owned personal templates without retaining them."""
+
+    raw_templates = request.form.get("personal_signs", "")
+    if not raw_templates:
+        return {}
+    if len(raw_templates) > 2_000_000:
+        raise ValueError("Too many personal gesture templates were sent.")
+    try:
+        templates = json.loads(raw_templates)
+    except json.JSONDecodeError as error:
+        raise ValueError("Personal gesture templates are invalid.") from error
+    if not isinstance(templates, dict) or len(templates) > MAX_PERSONAL_SIGNS:
+        raise ValueError(f"Store no more than {MAX_PERSONAL_SIGNS} personal gestures on one device.")
+    validated = {}
+    for label, examples in templates.items():
+        if not isinstance(label, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 '-]{0,38}", label):
+            continue
+        if isinstance(examples, list):
+            validated[label] = examples[:EXAMPLES_PER_SIGN]
+    return validated
 
 
 def recognition_response(candidates: list[tuple[str, float]], minimum_confidence: float = MINIMUM_CONFIDENCE):
@@ -164,7 +195,7 @@ def recognize_clip():
 
 @app.post("/api/mobile/recognize")
 def recognize_mobile_clip():
-    """Mobile-camera backup: record locally, then use the model's video-native path."""
+    """Recognize trained vocabulary plus browser-owned personal gestures."""
 
     clip = request.files.get("clip")
     if clip is None or not clip.filename:
@@ -172,13 +203,51 @@ def recognize_mobile_clip():
 
     temporary_path: Path | None = None
     try:
-        candidates, temporary_path = classify_clip(clip, recognizer=recognize_refined)
+        temporary_path = save_temporary_clip(clip)
+        feature_tensor = extract_feature_tensor(temporary_path)
+        templates = personal_templates_from_request()
+        if templates:
+            personal_match = match_personal_sign(build_embedding(feature_tensor), templates)
+            if personal_match is not None:
+                label, confidence = personal_match
+                return jsonify(
+                    status="recognized",
+                    source="personal",
+                    candidates=[{"label": label, "confidence": confidence}],
+                )
+        candidates = recognize_feature_tensor(feature_tensor, top_k=3)
         return recognition_response(candidates, minimum_confidence=REFINED_MINIMUM_CONFIDENCE)
     except ValueError as error:
         return jsonify(error=str(error)), 422
     except Exception:
         app.logger.exception("Mobile recognition failed")
         return jsonify(error="The mobile recording could not be processed. Keep one signer, both hands, and upper body visible."), 500
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+@app.post("/api/personal-signs/embedding")
+def create_personal_sign_embedding():
+    """Convert one consented enrollment clip into a non-image landmark template."""
+
+    clip = request.files.get("clip")
+    if clip is None or not clip.filename:
+        return jsonify(error="Record one example of the personal gesture first."), 400
+    temporary_path: Path | None = None
+    try:
+        temporary_path = save_temporary_clip(clip)
+        embedding = build_embedding(extract_feature_tensor(temporary_path))
+        return jsonify(
+            status="embedded",
+            embedding=np.round(embedding, 4).tolist(),
+            examples_required=EXAMPLES_PER_SIGN,
+        )
+    except ValueError as error:
+        return jsonify(error=str(error)), 422
+    except Exception:
+        app.logger.exception("Personal sign enrollment failed")
+        return jsonify(error="The gesture example could not be processed. Keep hands and upper body visible."), 500
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)

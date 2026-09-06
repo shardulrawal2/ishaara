@@ -3,6 +3,8 @@ const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)]
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const API_BASE = (document.documentElement.dataset.apiBase || "").replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE}${path}`;
+const PERSONAL_SIGNS_KEY = "ishaara-personal-signs-v1";
+const PERSONAL_EXAMPLES_REQUIRED = 3;
 
 const onboarding = $("#onboarding");
 const cameraPanel = $("#camera-panel");
@@ -31,7 +33,6 @@ const vocabularySearch = $("#vocabulary-search");
 const voiceSelect = $("#voice-select");
 const trainingDialog = $("#training-dialog");
 const trainingLabel = $("#training-label");
-const trainingSigner = $("#training-signer");
 const trainingButton = $("#record-training");
 const trainingStatus = $("#training-status");
 const toast = $("#toast");
@@ -41,6 +42,19 @@ let currentResult = "";
 let modelLabels = [];
 let toastTimer = null;
 let speechPrimed = false;
+let enrollmentName = "";
+let enrollmentExamples = [];
+
+function loadPersonalSigns() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(PERSONAL_SIGNS_KEY) || "{}");
+    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+let personalSigns = loadPersonalSigns();
 
 function formatLabel(label) {
   if (label === "thankyou") return "Thank you";
@@ -130,21 +144,25 @@ async function loadModel() {
 
 function renderVocabulary(query = "") {
   const normalized = query.trim().toLowerCase();
-  const labels = modelLabels.filter((label) => label.includes(normalized));
-  vocabularyCount.textContent = `${modelLabels.length} trained`;
+  const available = [
+    ...modelLabels.map((label) => ({ label, personal: false })),
+    ...Object.keys(personalSigns).map((label) => ({ label, personal: true })),
+  ].filter((item) => item.label.toLowerCase().includes(normalized));
+  vocabularyCount.textContent = `${modelLabels.length + Object.keys(personalSigns).length} signs`;
   wordList.replaceChildren();
-  labels.forEach((label) => {
+  available.forEach(({ label, personal }) => {
     const row = document.createElement("article");
     row.className = "word-row";
-    row.innerHTML = `<span class="word-letter">${formatLabel(label).charAt(0)}</span><div><b></b><small>Trained and enabled</small></div><button type="button" aria-label="Speak ${formatLabel(label)}">◖))</button>`;
+    row.innerHTML = `<span class="word-letter">${formatLabel(label).charAt(0)}</span><div><b></b><small></small></div><button type="button" aria-label="Speak ${formatLabel(label)}">◖))</button>`;
     $("b", row).textContent = formatLabel(label);
+    $("small", row).textContent = personal ? "Personal sign · saved on this device" : "Available sign";
     $("button", row).addEventListener("click", () => speak(formatLabel(label)));
     wordList.append(row);
   });
-  if (!labels.length) {
+  if (!available.length) {
     const empty = document.createElement("p");
     empty.className = "action-note";
-    empty.textContent = "That word is not trained yet. Collect examples before adding it to the model.";
+    empty.textContent = "No matching sign is available yet. You can create a personal sign below.";
     wordList.append(empty);
   }
 }
@@ -228,6 +246,7 @@ async function recordCameraClip(duration = 2500) {
 async function sendRecognitionClip(blob, filename = "ishaara-camera.webm") {
   const form = new FormData();
   form.append("clip", blob, filename);
+  form.append("personal_signs", JSON.stringify(personalSigns));
   const response = await fetch(apiUrl("/api/mobile/recognize"), { method: "POST", body: form });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Recognition failed.");
@@ -238,16 +257,18 @@ function presentRecognition(payload) {
   if (payload.status === "no_confident_match") {
     currentResult = "";
     speakResultButton.disabled = true;
-    updateRecognitionState("No confident match", "Return to neutral and repeat one trained sign with both hands visible.", payload.confidence || 0, false);
+    updateRecognitionState("No confident match", "Return to neutral and repeat the gesture with both hands visible.", payload.confidence || 0, false);
     actionNote.textContent = "The confidence gate rejected this sample instead of guessing.";
     return;
   }
   const winner = payload.candidates[0];
   currentResult = formatLabel(winner.label);
   speakResultButton.disabled = false;
-  updateRecognitionState(currentResult, "Accepted by the scoped local model. Tap the speaker to say it aloud.", winner.confidence, true);
+  const detail = payload.source === "personal" ? "Matched your personal gesture. Speaking now." : "Gesture recognized. Speaking now.";
+  updateRecognitionState(currentResult, detail, winner.confidence, true);
   conversationSign.textContent = currentResult;
   actionNote.textContent = "Recognition completed locally; the temporary clip was deleted.";
+  speak(currentResult);
 }
 
 async function recognizeFromLiveCamera() {
@@ -290,35 +311,64 @@ async function recognizeUploadedClip(file) {
   }
 }
 
-async function saveTrainingCapture() {
-  const label = trainingLabel.value.trim().toLowerCase();
-  const signer = trainingSigner.value.trim().toLowerCase();
-  if (!label || !signer) {
-    trainingStatus.textContent = "Enter both the exact sign label and a non-identifying signer code.";
+async function savePersonalSignExample() {
+  const requestedName = trainingLabel.value.trim();
+  if (!requestedName || !/^[A-Za-z0-9][A-Za-z0-9 '-]{0,38}$/.test(requestedName)) {
+    trainingStatus.textContent = "Enter a short name or phrase using letters, numbers, spaces, hyphens, or apostrophes.";
+    return;
+  }
+  if (modelLabels.some((label) => label.toLowerCase() === requestedName.toLowerCase())) {
+    trainingStatus.textContent = "That phrase is already in the available vocabulary. Choose a personal name or phrase.";
+    return;
+  }
+  if (!enrollmentName) enrollmentName = requestedName;
+  if (requestedName !== enrollmentName) {
+    trainingStatus.textContent = `Finish recording ${enrollmentName} before changing the name.`;
     return;
   }
   trainingButton.disabled = true;
+  trainingLabel.disabled = true;
   trainingButton.textContent = "Preparing camera…";
   try {
     if (!cameraStream) await startCamera();
-    trainingStatus.textContent = "Perform the sign now for 2.5 seconds.";
+    trainingStatus.textContent = `Perform the same gesture for ${formatLabel(enrollmentName)} now.`;
     trainingButton.textContent = "Recording…";
     const clip = await recordCameraClip();
     const form = new FormData();
-    form.append("label", label);
-    form.append("signer", signer);
-    form.append("clip", clip, "training-example.webm");
-    trainingButton.textContent = "Saving locally…";
-    const response = await fetch(apiUrl("/api/training/captures"), { method: "POST", body: form });
+    form.append("clip", clip, "personal-sign-example.webm");
+    trainingButton.textContent = "Reading landmarks…";
+    const response = await fetch(apiUrl("/api/personal-signs/embedding"), { method: "POST", body: form });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Could not save the recording.");
-    trainingStatus.textContent = `Saved one ${formatLabel(label)} example for ${signer}. Repeat with varied angles and lighting.`;
-    showToast("Training example saved locally.");
+    if (!response.ok) throw new Error(payload.error || "Could not learn that example.");
+    enrollmentExamples.push(payload.embedding);
+    const remaining = PERSONAL_EXAMPLES_REQUIRED - enrollmentExamples.length;
+    if (remaining > 0) {
+      trainingStatus.textContent = `Example ${enrollmentExamples.length} saved. Repeat the same gesture ${remaining} more ${remaining === 1 ? "time" : "times"}.`;
+      trainingButton.textContent = `Record example ${enrollmentExamples.length + 1} of ${PERSONAL_EXAMPLES_REQUIRED}`;
+    } else {
+      const previousExamples = personalSigns[enrollmentName];
+      personalSigns[enrollmentName] = enrollmentExamples;
+      try {
+        window.localStorage.setItem(PERSONAL_SIGNS_KEY, JSON.stringify(personalSigns));
+      } catch {
+        if (previousExamples) personalSigns[enrollmentName] = previousExamples;
+        else delete personalSigns[enrollmentName];
+        enrollmentExamples.pop();
+        throw new Error("This browser could not save another personal sign. Clear unused site data and try again.");
+      }
+      renderVocabulary();
+      trainingStatus.textContent = `${formatLabel(enrollmentName)} is ready as a personal sign on this device.`;
+      trainingButton.textContent = "Personal sign ready";
+      showToast(`${formatLabel(enrollmentName)} added to your personal vocabulary.`);
+      await wait(700);
+      trainingDialog.close();
+    }
   } catch (error) {
     trainingStatus.textContent = error.message;
+    trainingButton.textContent = `Record example ${Math.min(enrollmentExamples.length + 1, PERSONAL_EXAMPLES_REQUIRED)} of ${PERSONAL_EXAMPLES_REQUIRED}`;
   } finally {
     trainingButton.disabled = false;
-    trainingButton.textContent = "Record and save 2.5 seconds";
+    if (enrollmentExamples.length < PERSONAL_EXAMPLES_REQUIRED) trainingLabel.disabled = Boolean(enrollmentName);
   }
 }
 
@@ -366,9 +416,17 @@ $("#message-form").addEventListener("submit", (event) => {
   input.value = "";
 });
 vocabularySearch.addEventListener("input", () => renderVocabulary(vocabularySearch.value));
-$("#open-training").addEventListener("click", () => trainingDialog.showModal());
+$("#open-training").addEventListener("click", () => {
+  enrollmentName = "";
+  enrollmentExamples = [];
+  trainingLabel.disabled = false;
+  trainingLabel.value = "";
+  trainingButton.textContent = `Record example 1 of ${PERSONAL_EXAMPLES_REQUIRED}`;
+  trainingStatus.textContent = "Use a distinct gesture and keep your upper body and hands visible.";
+  trainingDialog.showModal();
+});
 $("#close-training").addEventListener("click", () => trainingDialog.close());
-trainingButton.addEventListener("click", saveTrainingCapture);
+trainingButton.addEventListener("click", savePersonalSignExample);
 $("#emergency-list").addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;

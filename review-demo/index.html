@@ -29,7 +29,7 @@
         <div class="desktop-brand"><div class="mini-mark" aria-hidden="true"><i></i><i></i></div><span>ISHAARA</span></div>
         <p class="desktop-kicker">Camera-first sign recognition</p>
         <h2>Make every gesture<br />part of the conversation.</h2>
-        <p class="desktop-copy">The app follows your mobile design and runs the validated local landmark model. Today’s honest vocabulary is <strong>hello</strong> and <strong>thankyou</strong>.</p>
+        <p class="desktop-copy">Ishaara turns supported gestures into clear text and speech, while keeping the experience simple, private, and personal.</p>
         <div class="desktop-proof"><div><strong>85.7%</strong><span>held-out signer accuracy</span></div><div><strong>75%</strong><span>confidence gate</span></div></div>
         <p class="privacy-line"><span></span> Recognition clips are deleted after inference.</p>
       </aside>
@@ -42,7 +42,7 @@
 
         <main class="app-main">
           <section class="app-view is-active" data-view="home" aria-labelledby="home-title">
-            <div class="screen-heading"><div><p class="eyebrow">LIVE TRANSLATION</p><h2 id="home-title">Show one sign</h2></div><span class="support-badge">2 trained</span></div>
+            <div class="screen-heading"><div><p class="eyebrow">LIVE TRANSLATION</p><h2 id="home-title">Show one sign</h2></div><span class="support-badge">Ready</span></div>
             <div class="camera-panel" id="camera-panel">
               <video id="camera-preview" autoplay muted playsinline aria-label="Live camera preview"></video>
               <div class="camera-empty" id="camera-empty"><div class="camera-symbol" aria-hidden="true">⌁</div><strong>Camera is ready when you are</strong><span>Keep both hands and your upper body inside the frame.</span></div>
@@ -53,7 +53,7 @@
             </div>
             <div class="recognition-card" aria-live="polite">
               <div class="recognition-topline"><span>ISHAARA UNDERSTOOD</span><b id="confidence-badge">Waiting</b></div>
-              <div class="recognized-row"><div><p class="recognized-word" id="recognized-word">Ready</p><p class="recognized-detail" id="recognized-detail">The model accepts only confident hello or thank-you predictions.</p></div><button class="round-action" id="speak-result" type="button" aria-label="Speak recognized result" disabled>◖))</button></div>
+              <div class="recognized-row"><div><p class="recognized-word" id="recognized-word">Ready</p><p class="recognized-detail" id="recognized-detail">Perform a supported or personal gesture when the camera is ready.</p></div><button class="round-action" id="speak-result" type="button" aria-label="Replay recognized result" disabled>◖))</button></div>
               <div class="confidence-track"><span id="confidence-fill"></span></div>
             </div>
             <div class="primary-actions"><button class="button button-primary" id="recognize-now" type="button">Recognize one sign</button><button class="button button-soft mobile-capture-label" id="mobile-capture-button" type="button">Use phone camera</button><input id="mobile-capture-input" type="file" accept="video/*" capture="user" hidden /></div>
@@ -73,11 +73,11 @@
           </section>
 
           <section class="app-view" data-view="vocabulary" aria-labelledby="vocabulary-title">
-            <div class="screen-heading screen-heading-compact"><div><p class="eyebrow">YOUR MODEL</p><h2 id="vocabulary-title">Vocabulary</h2></div><span class="support-badge" id="vocabulary-count">2 trained</span></div>
-            <div class="search-box"><span>⌕</span><input id="vocabulary-search" type="search" placeholder="Search trained signs" /></div>
-            <div class="section-label-row"><span>AVAILABLE NOW</span><small>Validated model labels</small></div>
+            <div class="screen-heading screen-heading-compact"><div><p class="eyebrow">YOUR SIGNS</p><h2 id="vocabulary-title">Vocabulary</h2></div><span class="support-badge" id="vocabulary-count">Loading</span></div>
+            <div class="search-box"><span>⌕</span><input id="vocabulary-search" type="search" placeholder="Search available signs" /></div>
+            <div class="section-label-row"><span>AVAILABLE NOW</span><small>Model and personal signs</small></div>
             <div class="word-list" id="word-list"></div>
-            <div class="expansion-card"><span class="feature-icon lavender">＋</span><div><b>Add another word safely</b><p>Collect the same word from at least three signer codes, retrain, then enable it only after held-out testing.</p></div><button class="button button-primary" id="open-training" type="button">Collect samples</button></div>
+            <div class="expansion-card"><span class="feature-icon lavender">＋</span><div><b>Create a personal sign</b><p>Give a name or phrase to your own gesture by recording it three times.</p></div><button class="button button-primary" id="open-training" type="button">Create sign</button></div>
           </section>
 
           <section class="app-view" data-view="settings" aria-labelledby="settings-title">
@@ -100,7 +100,7 @@
       </div>
     </div>
 
-    <dialog class="training-dialog" id="training-dialog"><form method="dialog" class="training-dialog-card" id="training-form"><button class="dialog-close" id="close-training" aria-label="Close" type="button">×</button><p class="eyebrow">DATA COLLECTION</p><h2>Collect a new sign</h2><p>Saving examples does not automatically add a word. Train and pass held-out signer evaluation first.</p><label>Sign label<input id="training-label" required maxlength="49" placeholder="e.g. welcome" /></label><label>Signer code<input id="training-signer" required maxlength="32" placeholder="e.g. signer-01" /></label><button class="button button-primary full-width" id="record-training" type="button">Record and save 2.5 seconds</button><small id="training-status">Use the same label spelling across every teammate.</small></form></dialog>
+    <dialog class="training-dialog" id="training-dialog"><form method="dialog" class="training-dialog-card" id="training-form"><button class="dialog-close" id="close-training" aria-label="Close" type="button">×</button><p class="eyebrow">PERSONAL VOCABULARY</p><h2>Create your sign</h2><p>Choose a name or short phrase, then perform the same gesture three times. The templates are saved in this browser and are not retained by the recognition server.</p><label>Name or phrase<input id="training-label" required maxlength="39" placeholder="e.g. Shardul" /></label><button class="button button-primary full-width" id="record-training" type="button">Record example 1 of 3</button><small id="training-status">Use a distinct gesture and keep your upper body and hands visible.</small></form></dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
     <script src="/app.js" defer></script>

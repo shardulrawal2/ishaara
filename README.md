@@ -105,13 +105,23 @@ Using the phone speaker can reduce a basic build to roughly **₹700–₹1,000*
 | 1 | ESP32-CAM video stream to phone | Planned |
 | 2 | Landmark extraction and scoped sign classifier | Working for 2 validated labels |
 | 3 | Text-to-speech and emergency phrases | Working in the web app |
-| 4 | Companion app and custom gesture flow | Working camera-first web MVP |
+| 4 | Companion app and custom gesture flow | Working responsive web MVP with personal gesture enrollment |
 | 5 | Speech-to-caption return path | Roadmap |
 | 6 | Continuous signing and group conversations | Research roadmap |
 
-> **Current working app:** the Figma-aligned camera MVP is intentionally limited to the team-trained `hello` and `thankyou` model. It includes sign-to-text, speech output, two-way conversation, model-backed vocabulary, emergency phrases, settings, and controlled training capture. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope and [`docs/ADDING_WORDS.md`](docs/ADDING_WORDS.md) for the exact expansion process.
+> **Current working app:** the Figma-aligned camera MVP combines a scoped team-trained model with device-owned personal gestures. It includes sign-to-text, automatic speech output, two-way conversation, vocabulary management, emergency phrases, settings, and three-example personal-sign enrollment. See [`docs/MVP_DEMO_RUNBOOK.md`](docs/MVP_DEMO_RUNBOOK.md) for the tested scope and [`docs/ADDING_WORDS.md`](docs/ADDING_WORDS.md) for the full-model expansion process.
 
-The deployable interface is phone-only. Accepted translations are spoken immediately using the mobile device's native Web Speech engine, avoiding a second server round trip. Deployment instructions are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+The deployable interface is mobile-first and responsive: phones receive the full-screen app, while larger displays retain the Figma-designed product context beside it. Accepted translations are spoken immediately using the device's native Web Speech engine, avoiding a second server round trip. Deployment instructions are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+### Create a personal sign
+
+Personal signs are a separate few-shot layer for names and private phrases; they do not pretend to retrain the general classifier instantly.
+
+1. Open **Vocabulary → Create sign**.
+2. Enter the name or phrase that should be spoken.
+3. Perform the same distinct gesture three times.
+4. The browser stores normalized landmark templates on that device. Uploaded enrollment clips are deleted after extraction and are not retained by the recognition server.
+5. Perform the gesture through **Recognize one sign**. A strong template match displays and automatically speaks the chosen name or phrase; otherwise the trained model remains the fallback.
 
 ### Current ML refinement path
 
@@ -120,7 +130,7 @@ The current checkpoint is a useful baseline, but it must not be treated as proof
 - **Mobile-video backup:** records a short clip and sends it through the model's video-native landmark pipeline. The clip is deleted immediately after recognition.
 - **ESP32 JPEG route:** accepts ordered snapshots at `/api/frames`; this remains the hardware integration route and is not removed while ESP32-CAM work continues.
 
-The phone app can also save explicitly consented, labelled ISL recordings with non-identifying signer codes. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
+The backend can also save explicitly consented, labelled ISL recordings through `POST /api/training/captures` for full model refinement. The local preparation and fine-tuning scripts create signer-separated training, validation, and test splits. A refined model is only promoted after it has been evaluated on signers it did not see during training.
 
 ### Test the current prototype locally
 
@@ -149,7 +159,7 @@ For the **ESP32-CAM path**, send ordered JPEG snapshots to `POST /api/frames`, u
 ### Build the first accurate scoped ISL model
 
 1. Choose an initial vocabulary of 5–10 signs with guidance from ISL users or interpreters.
-2. Under **Vocabulary → Collect samples**, enter the sign label and a non-identifying signer code, then use **Record and save**. Record around 25–50 examples of each sign per signer, with varied lighting, framing, clothing, and backgrounds.
+2. Collect labelled clips through `POST /api/training/captures` or an offline consented capture workflow. Record around 25–50 examples of each sign per signer, with varied lighting, framing, clothing, and backgrounds. Personal-sign enrollment is deliberately separate from this training dataset.
 3. Use at least three signers for every label. One signer's recordings must remain out of training for honest evaluation.
 4. Prepare landmarks and signer-separated splits:
 
